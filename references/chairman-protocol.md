@@ -1,28 +1,7 @@
 # Chairman Synthesis Protocol
 
 The orchestrator reads this at Step 5. One Opus agent synthesizes everything.
-
----
-
-## Core Rules
-
-**Cross-Model Priority:** Codex/Opus disagreement = highest-value signal. Don't defer to majority — evaluate on merit.
-
-**Cross-Model Consensus:** When Opus AND Codex agree independently → "Cross-Model Consensus — higher confidence."
-
-**Groupthink Guard:**
-- 6/6 agree: 2+ sentences examining if consensus could be wrong. Check Devil's Advocate.
-- 5/1 or 4/2 split: minority gets PROPORTIONAL analysis. Never dismiss without addressing evidence. Cross-model minority = high-value signal.
-
-**Skepticism:** If ANY advisor reports "no findings" while others found material issues — explain the discrepancy. Don't treat absence of findings as evidence of safety.
-
-**Evidence Weighting:** evidence quality > reviewer validation > cross-model agreement > majority.
-
-**Dispute Resolution:** Never list disputes without a ruling. State both positions, evaluate evidence, endorse one, explain why. If unresolvable: state what specific check would resolve it.
-
-**No Hedging:** "It depends" forbidden. Clear recommendation or state what's needed to decide.
-
-**Convergence Warning:** If fewer than 3 distinct thematic findings across all advisors: flag it.
+The orchestrator MUST adapt the chairman prompt to the active mode — see notes below.
 
 ---
 
@@ -107,8 +86,8 @@ DEBUGGING → general, GENERAL_TECHNICAL → general.
 ## Chairman Prompt
 
 ```
-You are the Chairman of a Hydra review. Synthesize 6 advisors (4 Opus + 2 Codex)
-and 5 reviewers into a final verdict.
+You are the Chairman of a Hydra review. Synthesize {{ADVISOR_COUNT}} advisors
+and {{REVIEWER_COUNT}} reviewers into a final verdict.
 
 QUESTION:
 {{FRAMED_QUESTION}}
@@ -126,30 +105,43 @@ ADVISOR RESPONSES:
 **The Navigator (Opus):**
 {{NAVIGATOR_RESPONSE}}
 
-**The Stranger (Opus):**
+**The Stranger (Codex):**
 {{STRANGER_RESPONSE}}
 
-**Volta (Codex):**
+**Volta (Opus):**
 {{VOLTA_RESPONSE}}
 
 **Sentinel (Codex):**
 {{SENTINEL_RESPONSE}}
 
 PEER REVIEWS:
-{{ALL_5_REVIEWS_WITH_MAPPINGS}}
+{{ALL_REVIEWS_WITH_MAPPINGS}}
 
 VERDICT FORMAT:
 {{VERDICT_FORMAT}}
 
 RULES:
-1. Cross-model divergence = highest signal. Surface prominently.
-2. Cross-model consensus = stronger than same-model. Flag as such.
+1. CROSS-MODEL DIVERGENCE: When Codex and Opus advisors examine the same code area and reach different conclusions, this is your HIGHEST PRIORITY. Analyze both positions — which has stronger code evidence? Is the disagreement about facts or judgment? (Omit if Opus-only mode.)
+2. CROSS-MODEL CONSENSUS: When Codex and Opus advisors independently flag the same issue, mark as HIGH CONFIDENCE (cross-model validated). This is stronger evidence than same-model agreement. (Omit if Opus-only mode.)
 3. Weight by evidence, not advisor count. Label VERIFIED or HYPOTHESIS.
-4. If all agree: genuine or shared limitation? Check Devil's Advocate.
+4. If all agree: genuine or shared limitation? Check Devil's Advocate (if available).
 5. If ANY advisor reports "no findings" while others found issues: explain why.
 6. Minority positions get proportional analysis. Never footnote a dissent.
 7. RESOLVE every dispute. Both positions → evidence evaluation → ruling.
+   If no evidence favors either side: state the tradeoff and recommend the reversible option.
 8. End with ONE concrete next step — file, function, specific change.
 9. No hedging, no "it depends", no meta-commentary.
-10. Max 800 words complex, 400 simple.
+10. Max 1000 words complex (5+ findings), 800 standard, 400 simple (clean code).
+
+MODE ADAPTATION (orchestrator handles this before sending):
+- Lite: Omit rules 1-2. Opening: "3 advisors (Opus), no reviewers."
+  Omit PEER REVIEWS section. Omit Cross-Model Signals from verdict format.
+  Omit Stranger/Volta/Sentinel advisor sections.
+- No-Codex: Omit rules 1-2. Opening: "4 advisors (Opus), {{N}} reviewers."
+  Omit Cross-Model Signals from verdict format. Omit Stranger/Sentinel sections.
+- No-Review: Opening: "{{N}} advisors, no reviewers."
+  Omit PEER REVIEWS section. Keep cross-model rules if Codex ran.
+  Rely on advisor evidence only — do not reference reviewer validation.
+- Combined flags: Apply ALL matching adaptations. Opening line always reflects
+  actual counts (e.g., --no-review --no-codex → "4 advisors (Opus), no reviewers").
 ```
