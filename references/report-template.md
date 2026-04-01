@@ -1,9 +1,21 @@
 # Hydra Report Template
 
-Save to `.hydra/reports/hydra-YYYYMMDDTHHMM-{slug}.md`. Slug = first 3-4 words, kebab-case.
+Save to `.hydra/reports/hydra-YYYYMMDDTHHMMSS-{slug}.md`.
+Slug = first 3-4 words, kebab-case, `[a-z0-9-]` only, max 40 chars. Fallback: `review`.
+`{{TITLE}}` = one-line summary of the reviewed subject, derived from user's input.
 Create `.hydra/.gitignore` with `*` on first run.
 
-For timed-out advisors/reviewers: mark as `[TIMEOUT — no response]`.
+**Status labels:**
+- `responded` — advisor/reviewer completed successfully
+- `timeout` — spawned but did not respond within 120s
+- `not run` — excluded by active mode (e.g., Volta in `--no-codex`)
+
+**Mode-aware sections:**
+- Omit advisor rows/sections for roles that didn't run (don't mark as timeout).
+- Omit `## Peer Reviews` entirely if `--no-review` or `--mode lite`.
+- Omit `### Cross-Model Signals` if running Opus-only (`--no-codex` or `--mode lite`).
+- If fewer than expected responded, add after the Verdict heading:
+  `> **Note:** Degraded confidence — only {{N}} of {{M}} responded.`
 
 ---
 
@@ -19,9 +31,9 @@ For timed-out advisors/reviewers: mark as `[TIMEOUT — no response]`.
 | Cassandra | Opus | {{responded/timeout}} |
 | Mies | Opus | {{responded/timeout}} |
 | Navigator | Opus | {{responded/timeout}} |
-| The Stranger | Opus | {{responded/timeout}} |
-| Volta | Codex | {{responded/timeout}} |
-| Sentinel | Codex | {{responded/timeout}} |
+| The Stranger | Codex | {{responded/timeout/not run}} |
+| Volta | Opus | {{responded/timeout}} |
+| Sentinel | Codex | {{responded/timeout/not run}} |
 
 ---
 
@@ -38,13 +50,16 @@ For timed-out advisors/reviewers: mark as `[TIMEOUT — no response]`.
 | Cassandra (Opus) | {{APPROVE/CONCERN/REJECT}} | {{finding, max 60 chars}} |
 | Mies (Opus) | {{pos}} | {{finding}} |
 | Navigator (Opus) | {{pos}} | {{finding}} |
-| The Stranger (Opus) | {{pos}} | {{finding}} |
-| Volta (Codex) | {{pos}} | {{finding}} |
+| The Stranger (Codex) | {{pos}} | {{finding}} |
+| Volta (Opus) | {{pos}} | {{finding}} |
 | Sentinel (Codex) | {{pos}} | {{finding}} |
 
-Position values: APPROVE | CONCERN | REJECT | N/A (timeout)
-Orchestrator classification: REJECT = any CATASTROPHIC/CRITICAL finding. CONCERN = SERIOUS/HIGH.
-APPROVE = only MODERATE/LOW or no findings. N/A = timeout.
+Position values: APPROVE | CONCERN | REJECT | N/A (timeout/not run)
+Orchestrator classification:
+- REJECT = any CATASTROPHIC finding (Cassandra, Volta) or HIGH-confidence verified vulnerability (Sentinel)
+- CONCERN = SERIOUS finding, or advisor recommends significant changes (Mies: remove abstraction touching 3+ callers, Navigator: restructuring 3+ dependency layers, Stranger: cognitive load requiring 5+ working memory items)
+- APPROVE = only MODERATE/LOW findings, or no findings
+- N/A = timeout or not participating in this mode
 
 ### Cross-Model Signals
 
@@ -75,10 +90,10 @@ APPROVE = only MODERATE/LOW or no findings. N/A = timeout.
 ### Navigator — Systems Cartographer (Opus)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
-### The Stranger — Adversarial First-Reader (Opus)
+### The Stranger — Adversarial First-Reader (Codex)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
-### Volta — Efficiency Surgeon (Codex)
+### Volta — Efficiency Surgeon (Opus)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
 ### Sentinel — Adversarial Security (Codex)
@@ -113,7 +128,7 @@ APPROVE = only MODERATE/LOW or no findings. N/A = timeout.
 ## In-Conversation Summary (max 25 lines)
 
 Map question type to signal line:
-- CODE_REVIEW → first sentence of chairman Summary
+- CODE_REVIEW → `**{{one-sentence quality assessment from chairman}}**`
 - ARCHITECTURE_DECISION / DEBUGGING / GENERAL_TECHNICAL → **Confidence: {{level}}**
 - SECURITY_AUDIT → **Risk Level: {{level}}**
 
@@ -139,5 +154,5 @@ Full report: `.hydra/reports/hydra-{{TIMESTAMP}}-{{SLUG}}.md`
 
 ## Transcript (if `--transcript`)
 
-Save raw outputs to `.hydra/reports/hydra-YYYYMMDDTHHMM-{slug}-transcript.md`.
+Save raw outputs to `.hydra/reports/hydra-YYYYMMDDTHHMMSS-{slug}-transcript.md`.
 Dump each section under its heading. Include anonymization mappings.
