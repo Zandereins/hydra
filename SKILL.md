@@ -11,7 +11,9 @@ description: >
   'hydra lite', 'Hydra starten', 'red team this',
   'tear this apart', 'stress test this', 'roast this code',
   'what am I missing', 'second opinion', 'blind spots',
-  'check my blind spots', 'is this overengineered', 'sanity check this'.
+  'check my blind spots', 'is this overengineered', 'sanity check this',
+  'hydra iterate', 'hydra re-review', 'did I fix the issues',
+  'hydra follow-up', 'check my fixes', 'run hydra again'.
 ---
 
 # Hydra
@@ -62,7 +64,16 @@ relevant step.
    `.env` contents.
    Replace matches with `[REDACTED:type]`. If secrets found: show redacted locations
    and ask user to confirm before proceeding.
-5. **Classify question type:** `CODE_REVIEW` | `ARCHITECTURE_DECISION` | `SECURITY_AUDIT` | `DEBUGGING` | `GENERAL_TECHNICAL`
+5. **Iteration detection** (skip if fresh review):
+   ```bash
+   ls -1t .hydra/reports/hydra-*.md 2>/dev/null | grep -v transcript | head -1
+   ```
+   If trigger is an iterate-trigger (`hydra iterate`, `re-review`, `check my fixes`, etc.)
+   AND a previous report exists: set `HYDRA_ITERATE=true`, extract Top Actions + Verdict
+   lead + timestamp from the report. Default to `--mode lite` unless user passes `--mode full`.
+   Print: `[Hydra] Iterating on: {{PREV_REPORT}} ({{AGE}} ago)`
+   If no previous report exists: warn user, fall back to fresh review.
+6. **Classify question type:** `CODE_REVIEW` | `ARCHITECTURE_DECISION` | `SECURITY_AUDIT` | `DEBUGGING` | `GENERAL_TECHNICAL`
    If `SECURITY_AUDIT` and `--mode lite`: warn user — `Lite mode excludes Sentinel (security specialist). Consider full mode or --no-review. Proceed anyway? [Y/n]`
 6. **Codex check** (skip if `--no-codex` or `--mode lite`):
    ```bash
@@ -104,6 +115,8 @@ Quickly scan (< 30 seconds):
 - Project structure (high-level)
 
 **Hard limit: 5000 tokens.** Priority: source code > git diff > CLAUDE.md > project structure.
+If `HYDRA_ITERATE`: use `git diff` since previous report timestamp instead of full diff.
+Add previous Top Actions (~100 tokens) to enriched context.
 Apply secrets scan to enriched context.
 
 ### Step 2: Frame the Question
@@ -113,6 +126,17 @@ QUESTION: [core decision or review request]
 CONTEXT: [key context from user + enriched files]
 QUESTION TYPE: [classification]
 STAKES: [why this decision matters]
+```
+
+If `HYDRA_ITERATE`, append to the framed question:
+
+```
+ITERATION CONTEXT:
+Previous review: {{PREV_REPORT}} ({{AGE}} ago)
+Previous Top Actions:
+{{TOP_ACTIONS_FROM_PREV_REPORT}}
+Changes since: {{GIT_DIFF_STAT_SUMMARY}}
+TASK: Re-review — verify fixes and assess remaining/new issues.
 ```
 
 ### Step 3: Spawn Advisors (parallel)
@@ -185,6 +209,18 @@ Read `references/chairman-protocol.md` for the protocol and verdict formats.
 
 Spawn 1 Opus agent. Adapt the chairman prompt per the MODE ADAPTATION rules in `references/chairman-protocol.md`.
 
+If `HYDRA_ITERATE`: append to the chairman prompt before RULES:
+
+```
+ITERATION MODE — This is a follow-up review. Previous Top Actions:
+{{TOP_ACTIONS_FROM_PREV_REPORT}}
+After the verdict, produce a DELTA BLOCK (outside word limit, max 150 words):
+**Fixed:** [previous actions now resolved, with evidence]
+**Remaining:** [previous actions still present]
+**New:** [findings not in previous review]
+**Progress:** [X of Y previous actions addressed]
+```
+
 ### Step 6: Generate Report
 
 Read `references/report-template.md` for the template. Generate inline (no extra agent).
@@ -205,6 +241,23 @@ If `--transcript`: save raw agent outputs to separate file (see report-template.
 
 Present in-conversation summary (max 25 lines) using the chairman's SUMMARY BLOCK,
 formatted per `references/report-template.md`.
+
+If `HYDRA_ITERATE`, use the chairman's DELTA BLOCK instead:
+
+```
+## Hydra Delta: {{TITLE}}
+
+**Progress: {{X}}/{{Y}} previous actions addressed**
+
+**Fixed:** {{resolved actions}}
+**Remaining:** {{unresolved actions}}
+**New Issues:** {{new findings, if any}}
+
+**Next Step:** {{ONE action}}
+
+Full report: `.hydra/reports/hydra-{{TIMESTAMP}}-{{SLUG}}.md`
+Previous: `{{PREV_REPORT}}`
+```
 
 ---
 
