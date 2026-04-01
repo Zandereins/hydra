@@ -8,12 +8,13 @@ Create `.hydra/.gitignore` with `*` on first run.
 **Status labels:**
 - `responded` — advisor/reviewer completed successfully
 - `timeout` — spawned but did not respond within 120s
-- `not run` — excluded by active mode (e.g., Volta in `--no-codex`)
+- `not run` — excluded by active mode (e.g., Stranger/Sentinel in `--mode lite`)
 
 **Mode-aware sections:**
-- Omit advisor rows/sections for roles that didn't run (don't mark as timeout).
+- Keep status table rows for excluded roles as `not run`. Omit their full response sections.
 - Omit `## Peer Reviews` entirely if `--no-review` or `--mode lite`.
 - Omit `### Cross-Model Signals` if running Opus-only (`--no-codex` or `--mode lite`).
+- In `--no-codex` mode: replace "Codex" with "Opus" in Model column and section headings.
 - If fewer than expected responded, add after the Verdict heading:
   `> **Note:** Degraded confidence — only {{N}} of {{M}} responded.`
 
@@ -47,19 +48,9 @@ Create `.hydra/.gitignore` with `*` on first run.
 
 | Advisor (Model) | Position | Key Finding |
 |-----------------|----------|-------------|
-| Cassandra (Opus) | {{APPROVE/CONCERN/REJECT}} | {{finding, max 60 chars}} |
-| Mies (Opus) | {{pos}} | {{finding}} |
-| Navigator (Opus) | {{pos}} | {{finding}} |
-| The Stranger (Codex) | {{pos}} | {{finding}} |
-| Volta (Opus) | {{pos}} | {{finding}} |
-| Sentinel (Codex) | {{pos}} | {{finding}} |
-
-Position values: APPROVE | CONCERN | REJECT | N/A (timeout/not run)
-Orchestrator classification:
-- REJECT = any CATASTROPHIC finding (Cassandra, Volta) or HIGH-confidence verified vulnerability (Sentinel)
-- CONCERN = SERIOUS finding, or advisor recommends significant changes (Mies: remove abstraction touching 3+ callers, Navigator: restructuring 3+ dependency layers, Stranger: cognitive load requiring 5+ working memory items)
-- APPROVE = only MODERATE/LOW findings, or no findings
-- N/A = timeout or not participating in this mode
+{{CHAIRMAN_CONSENSUS_MAP}}
+<!-- Orchestrator: extract the Consensus Map table from the chairman's output
+     (produced per Rule 8). The chairman owns position overrides and findings. -->
 
 ### Cross-Model Signals
 
@@ -137,7 +128,9 @@ Map question type to signal line:
 
 **{{SIGNAL_LINE}}**
 
-{{CHAIRMAN_SUMMARY — 2-3 sentences}}
+{{VERDICT_LEAD}}
+<!-- Orchestrator: extract 2-3 sentences from chairman verdict lead —
+     Summary (code review), Recommendation (arch), Risk Level (security), or Answer (debug). -->
 
 **Top Actions:**
 1. {{action with file/function reference}}
@@ -155,4 +148,4 @@ Full report: `.hydra/reports/hydra-{{TIMESTAMP}}-{{SLUG}}.md`
 ## Transcript (if `--transcript`)
 
 Save raw outputs to `.hydra/reports/hydra-YYYYMMDDTHHMMSS-{slug}-transcript.md`.
-Dump each section under its heading. Include anonymization mappings.
+Dump each section under its heading. Include advisor label mappings (A=Cassandra, etc.).
