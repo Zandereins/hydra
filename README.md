@@ -50,12 +50,16 @@ pre-merge deep reviews.
 # Install
 git clone https://github.com/Zandereins/hydra.git ~/.claude/skills/hydra
 
-# Use (in any Claude Code session)
+# Review
 hydra this: [paste code or describe decision]
+
+# Fix issues, then iterate
+hydra iterate
 ```
 
 Hydra asks for cost confirmation before running. Auto-detects Codex; falls back to
-Opus-only if unavailable.
+Opus-only if unavailable. Iterations default to Lite mode (~$1.50-2) and show a
+delta: what's fixed, what remains, what's new.
 
 **Requirements:** [Claude Code](https://claude.ai/code) (required) |
 [Codex CLI plugin](https://github.com/openai/codex-plugin-cc) (optional — enables
@@ -98,6 +102,29 @@ Flags combine: `--no-review --no-codex` = 7 agents. `--mode lite` implies both.
 
 Costs are for API calls to Claude and Codex — charged to your own accounts.
 Hydra always shows the estimate and asks before running.
+
+---
+
+## Iterate
+
+Hydra reviews aren't one-shot. Fix the issues, then run `hydra iterate` to verify:
+
+```
+## Hydra Delta: auth-middleware-refactor
+
+**Progress: 2/3 previous actions addressed**
+
+**Fixed:** Mutex added around token refresh. SessionValidatorFactory removed.
+**Remaining:** Integration test for concurrent refresh not yet added.
+**New Issues:** None.
+
+**Next Step:** Add test in auth/__tests__/refresh.test.ts
+```
+
+Iterations auto-detect the last report, diff only what changed, and default to
+Lite mode. Run as many cycles as needed — each one costs ~$1.50-2.
+
+Triggers: `hydra iterate`, `hydra re-review`, `hydra follow-up`, `check my fixes`.
 
 ---
 
