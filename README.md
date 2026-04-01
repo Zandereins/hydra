@@ -52,8 +52,8 @@ Mies identified two abstraction layers that can be collapsed.
 3. Add integration test for concurrent refresh scenario
 
 **Key Tensions:**
-- Navigator vs Mies on separating auth/authz modules (cross-model:
-  Volta sided with Mies). Ruling: keep combined until second consumer exists.
+- Navigator vs Mies on separating auth/authz modules (Stranger sided
+  with Mies — cross-model). Ruling: keep combined until second consumer exists.
 
 Full report: .hydra/reports/hydra-20260331T144523-auth-middleware-refactor.md
 ```
@@ -108,10 +108,10 @@ strongest signal. When they disagree, that's the highest-value finding.
 |------|------|--------|------|-----------|
 | Full | *(default)* | 12 (6 advisors + 5 reviewers + chairman) | ~2-3 min | ~$3-5 |
 | No-Review | `--no-review` | 7 (6 advisors + chairman) | ~1.5 min | ~$2 |
-| No-Codex | `--no-codex` | 8 (Opus only) | ~2 min | ~$3 |
+| No-Codex | `--no-codex` | 10 (Opus only) | ~2 min | ~$4 |
 | Lite | `--mode lite` | 4 (Cassandra + Mies + Navigator + chairman) | ~1 min | ~$1 |
 
-Flags combine naturally: `--no-review --no-codex` = 5 agents. `--mode lite` implies both.
+Flags combine naturally: `--no-review --no-codex` = 7 agents. `--mode lite` implies both.
 
 Additional flags: `--transcript` saves raw agent outputs separately.
 
@@ -145,9 +145,9 @@ Just ask Claude for: Syntax fixes, factual lookups, code generation, style quest
 <details>
 <summary><strong>Do I need the Codex plugin?</strong></summary>
 
-No. Codex is optional. Without it, Hydra auto-falls back to Opus-only mode (4 advisors +
-3 reviewers + chairman = 8 agents). You still get multi-perspective analysis — just
-without the cross-model dimension.
+No. Codex is optional. Without it, Hydra runs all 6 advisors on Opus (6 advisors +
+3 reviewers + chairman = 10 agents). You still get all perspectives — just without
+the cross-model dimension.
 </details>
 
 <details>
