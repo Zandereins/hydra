@@ -4,7 +4,8 @@ description: >
   Multi-perspective code review council: advisors analyze, reviewers
   cross-examine, chairman synthesizes verdict.
   USE for: architecture decisions, security audits, tradeoff analysis,
-  "what am I missing" questions, pre-merge deep reviews.
+  "what am I missing" questions, pre-merge deep reviews, iterative
+  re-reviews after fixes.
   DO NOT USE for: simple code generation, syntax fixes, single-file
   refactors, or factual lookups.
   TRIGGERS: 'hydra', 'hydra this', 'hydra review', 'run hydra',

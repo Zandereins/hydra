@@ -145,6 +145,27 @@ Full report: `.hydra/reports/hydra-{{TIMESTAMP}}-{{SLUG}}.md`
 
 ---
 
+## In-Conversation Summary — Iteration Mode (if `HYDRA_ITERATE`)
+
+Use the chairman's DELTA BLOCK instead of the standard summary:
+
+```
+## Hydra Delta: {{TITLE}}
+
+**Progress: {{X}}/{{Y}} previous actions addressed**
+
+**Fixed:** {{resolved actions from previous Top Actions}}
+**Remaining:** {{unresolved actions}}
+**New Issues:** {{findings not in previous review, if any}}
+
+**Next Step:** {{ONE action}}
+
+Full report: `.hydra/reports/hydra-{{TIMESTAMP}}-{{SLUG}}.md`
+Previous: `{{PREV_REPORT}}`
+```
+
+---
+
 ## Transcript (if `--transcript`)
 
 Save raw outputs to `.hydra/reports/hydra-YYYYMMDDTHHMMSS-{slug}-transcript.md`.
