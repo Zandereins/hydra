@@ -85,7 +85,7 @@ Hydra: {{AGENT_COUNT}} agents. {{PROVIDER_NOTE}}.
 Estimated: {{TIME}}, {{COST}}.
 
 Alternatives:
-  --mode lite  → 4 agents, ~$1, ~1 min (Opus only, no review)
+  --mode lite  → 4 agents, ~$1.50-2, ~1 min (Opus only, no review)
   --no-review  → 7 agents, ~$2, ~1.5 min
   --no-codex   → 10 agents, ~$4, ~2 min (Opus only)
 

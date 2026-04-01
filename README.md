@@ -4,33 +4,13 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-D97757)](https://docs.anthropic.com/en/docs/claude-code/skills)
-[![Codex Compatible](https://img.shields.io/badge/Codex-Compatible-10a37f)](https://github.com/openai/codex-plugin-cc)
 [![Agents](https://img.shields.io/badge/Agents-12_parallel-blue)](#modes)
 
-One model misses things. Hydra runs six specialist advisors across Claude Opus and OpenAI
-Codex — each asking a fundamentally different question about your code — then
-cross-examines their answers and delivers a single verdict with actionable next steps.
-
-Built on [Andrej Karpathy's LLM Council](https://x.com/karpathy) methodology.
-
----
-
-## Quick Start
-
-```bash
-# Install
-git clone https://github.com/Zandereins/hydra.git ~/.claude/skills/hydra
-
-# Use (in any Claude Code session)
-hydra this: [paste code or describe decision]
-```
-
-Hydra asks for cost confirmation before running. Auto-detects Codex; falls back to
-Opus-only if unavailable.
-
-**Requirements:** [Claude Code](https://claude.ai/code) (required) |
-[Codex CLI plugin](https://github.com/openai/codex-plugin-cc) (optional — enables
-cross-model analysis)
+Six specialists ask six different questions about your code, cross-examine each
+other's answers, and deliver one verdict. Inspired by
+[Karpathy's LLM Council](https://github.com/karpathy/llm-council) — same principle
+(independent perspectives, cross-examination, synthesis), adapted for specialist
+code review with cross-model diversity (Claude Opus + OpenAI Codex).
 
 ---
 
@@ -58,113 +38,79 @@ Mies identified two abstraction layers that can be collapsed.
 Full report: .hydra/reports/hydra-20260331T144523-auth-middleware-refactor.md
 ```
 
-Plus a full report saved to `.hydra/reports/` with all advisor responses, peer reviews,
-consensus map, and cross-model signals.
+**Best for:** Architecture decisions, security-critical code, refactoring tradeoffs,
+pre-merge deep reviews.
+**Just ask Claude for:** Syntax fixes, factual lookups, code generation, style questions.
 
 ---
 
-## How It Works
+## Quick Start
 
-```
-                         Your Code
-                            |
-                    [ Context Enrichment ]
-                            |
-            +-------+-------+-------+-------+-------+
-            |       |       |       |       |       |
-        Cassandra  Mies  Navigator Stranger Volta  Sentinel
-        (Opus)   (Opus)  (Opus)   (Codex) (Opus)  (Codex)
-            |       |       |       |       |       |
-            +-------+-------+-------+-------+-------+
-                            |
-                    [ 5 Peer Reviewers ]
-                  3 Opus + 2 Codex
-                            |
-                    [ Chairman (Opus) ]
-                            |
-                        Verdict
+```bash
+# Install
+git clone https://github.com/Zandereins/hydra.git ~/.claude/skills/hydra
+
+# Use (in any Claude Code session)
+hydra this: [paste code or describe decision]
 ```
 
-### The 6 Advisors
+Hydra asks for cost confirmation before running. Auto-detects Codex; falls back to
+Opus-only if unavailable.
 
-| # | Name | Model | Core Question | What They Catch |
-|---|------|-------|---------------|-----------------|
-| 1 | Cassandra | Opus | "How does this break at 3am?" | Compound failures, unguarded assumptions, missing error paths |
-| 2 | Mies | Opus | "What can be deleted?" | Dead code, over-engineering, unnecessary abstractions |
-| 3 | Navigator | Opus | "What depends on what?" | Coupling, boundary violations, change propagation |
-| 4 | The Stranger | Codex | "Can a stranger understand this in 15 min?" | Misleading names, cognitive overload, lying comments |
-| 5 | Volta | Opus | "What does this cost at 10x load?" | N+1 queries, missing indexes, invisible-in-dev costs |
-| 6 | Sentinel | Codex | "How do I break this on purpose?" | Auth gaps, injection vectors, race conditions, data loss |
+**Requirements:** [Claude Code](https://claude.ai/code) (required) |
+[Codex CLI plugin](https://github.com/openai/codex-plugin-cc) (optional — enables
+cross-model analysis)
 
-Cross-model advisors (Stranger on Codex, Sentinel on Codex) catch blind spots that
-same-model analysis misses. When Opus and Codex independently agree, that's the
-strongest signal. When they disagree, that's the highest-value finding.
+---
+
+## The 6 Advisors
+
+Each advisor asks a fundamentally different question. Four run on Claude Opus,
+two on OpenAI Codex — different model, different blind spots. When Opus and Codex
+independently agree, that's the strongest signal. When they disagree, that's the
+highest-value finding.
+
+| # | Name | Model | Core Question |
+|---|------|-------|---------------|
+| 1 | Cassandra | Opus | "How does this break at 3am?" — compound failures, unguarded assumptions |
+| 2 | Mies | Opus | "What can be deleted?" — dead code, over-engineering |
+| 3 | Navigator | Opus | "What depends on what?" — coupling, boundary violations |
+| 4 | The Stranger | Codex | "Can a stranger understand this in 15 min?" — naming, cognitive load |
+| 5 | Volta | Opus | "What does this cost at 10x load?" — N+1 queries, invisible costs |
+| 6 | Sentinel | Codex | "How do I break this on purpose?" — auth gaps, injection, race conditions |
+
+Advisors run in parallel, then 5 peer reviewers cross-examine their work
+(3 Opus + 2 Codex), then a chairman (Opus) synthesizes the final verdict.
 
 ---
 
 ## Modes
 
-| Mode | Flag | Agents | Time | Est. Cost |
-|------|------|--------|------|-----------|
-| Full | *(default)* | 12 (6 advisors + 5 reviewers + chairman) | ~2-3 min | ~$3-5 |
-| No-Review | `--no-review` | 7 (6 advisors + chairman) | ~1.5 min | ~$2 |
-| No-Codex | `--no-codex` | 10 (Opus only) | ~2 min | ~$4 |
-| Lite | `--mode lite` | 4 (Cassandra + Mies + Navigator + chairman) | ~1 min | ~$1 |
+| Mode | Agents | Est. Cost |
+|------|--------|-----------|
+| **Full** *(default)* | 12 (6 advisors + 5 reviewers + chairman) | ~$3-5 |
+| `--no-review` | 7 (6 advisors + chairman) | ~$2 |
+| `--no-codex` | 10 (all Opus) | ~$4 |
+| `--mode lite` | 4 (Cassandra + Mies + Navigator + chairman) | ~$1.50-2 |
 
-Flags combine naturally: `--no-review --no-codex` = 7 agents. `--mode lite` implies both.
+Flags combine: `--no-review --no-codex` = 7 agents. `--mode lite` implies both.
+`--transcript` saves raw agent outputs separately.
 
-Additional flags: `--transcript` saves raw agent outputs separately.
-
-Think of it as a 2-minute panel review by six specialists — cheaper than a missed
-production incident.
-
----
-
-## FAQ
-
-<details>
-<summary><strong>Is my code sent to OpenAI?</strong></summary>
-
-In full mode, your code is sent to both Anthropic (Claude Opus) and OpenAI (Codex GPT-5.4).
-Use `--no-codex` to keep code Anthropic-only. Hydra shows which providers receive your
-code in the cost confirmation before any agents run.
-</details>
-
-<details>
-<summary><strong>Why not just ask Claude to review my code?</strong></summary>
-
-A single model call gives you one perspective. Hydra gives you six specialists that each
-ask a fundamentally different question, five reviewers that challenge their claims, and a
-chairman that synthesizes a verdict. Cross-model analysis (Opus + Codex) catches blind
-spots that same-model repetition misses.
-
-Best for: Architecture decisions, security-critical code, refactoring tradeoffs.
-Just ask Claude for: Syntax fixes, factual lookups, code generation, style questions.
-</details>
-
-<details>
-<summary><strong>Do I need the Codex plugin?</strong></summary>
-
-No. Codex is optional. Without it, Hydra runs all 6 advisors on Opus (6 advisors +
-3 reviewers + chairman = 10 agents). You still get all perspectives — just without
-the cross-model dimension.
-</details>
-
-<details>
-<summary><strong>How much does it cost?</strong></summary>
-
-Full mode: ~$3-5 per review (12 agents). Lite mode: ~$1 (4 agents). These costs are for
-the API calls to Claude and Codex — charged to your own API accounts. Hydra always shows
-the cost estimate and asks for confirmation before running.
-</details>
+Costs are for API calls to Claude and Codex — charged to your own accounts.
+Hydra always shows the estimate and asks before running.
 
 ---
 
-## Attribution
+## Privacy
 
-Built on [Andrej Karpathy's LLM Council](https://x.com/karpathy) methodology — multiple
-independent AI perspectives, cross-examined and synthesized, produce better judgments than
-any single model call.
+In full mode, your code is sent to both Anthropic (Claude Opus) and OpenAI
+(Codex GPT-5.4). Use `--no-codex` to keep everything Anthropic-only. Hydra shows
+which providers receive your code and asks for confirmation before any agents run.
+
+Without the Codex plugin, Hydra runs all 6 advisors on Opus (10 agents). You still
+get all perspectives — just without cross-model diversity.
+
+---
 
 ## License
 
