@@ -2,13 +2,16 @@
 
 **Your code review has blind spots. Use more eyes.**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-D97757)](https://docs.anthropic.com/en/docs/claude-code/skills)
+[![Codex Compatible](https://img.shields.io/badge/Codex-Compatible-10a37f)](https://github.com/openai/codex-plugin-cc)
+[![Agents](https://img.shields.io/badge/Agents-12_parallel-blue)](#modes)
+
 One model misses things. Hydra runs six specialist advisors across Claude Opus and OpenAI
 Codex — each asking a fundamentally different question about your code — then
 cross-examines their answers and delivers a single verdict with actionable next steps.
 
-> Adapted from [Andrej Karpathy's LLM Council](https://x.com/karpathy) methodology:
-> multiple independent AI perspectives, cross-examined and synthesized, produce better
-> judgments than any single model call.
+Built on [Andrej Karpathy's LLM Council](https://x.com/karpathy) methodology.
 
 ---
 
@@ -31,22 +34,32 @@ cross-model analysis)
 
 ---
 
-## Why Not Just Ask Claude?
+## What You Get
 
-| | Single model call | Hydra |
-|---|---|---|
-| Perspectives | 1 | 6 specialized advisors |
-| Blind spot detection | None | Cross-model divergence surfaced |
-| Security review | Generic | Dedicated adversarial advisor (Sentinel) |
-| Performance analysis | If you ask | Always included (Volta) |
-| Peer review | None | 5 reviewers challenge advisor claims |
-| Structured output | Varies | Consistent verdict with actions |
-| Strongest signal | N/A | Independent agreement across Opus + Codex |
+```
+## Hydra Verdict: auth-middleware-refactor
 
-**Use Hydra for:** Architecture decisions, security-critical code, refactoring tradeoffs,
-"what am I missing?" questions.
+**Solid refactor with one critical gap in token refresh handling.**
 
-**Just ask Claude for:** Syntax fixes, factual lookups, code generation, style questions.
+The middleware correctly centralizes auth checks, but the refresh token
+flow has a race condition under concurrent requests — Cassandra and
+Sentinel (cross-model consensus) both flagged this independently.
+Mies identified two abstraction layers that can be collapsed.
+
+**Top Actions:**
+1. Add mutex around token refresh in auth/middleware.ts:47-62
+2. Remove SessionValidatorFactory — inline the 3-line check (auth/validators.ts)
+3. Add integration test for concurrent refresh scenario
+
+**Key Tensions:**
+- Navigator vs Mies on separating auth/authz modules (cross-model:
+  Volta sided with Mies). Ruling: keep combined until second consumer exists.
+
+Full report: .hydra/reports/hydra-20260331T144523-auth-middleware-refactor.md
+```
+
+Plus a full report saved to `.hydra/reports/` with all advisor responses, peer reviews,
+consensus map, and cross-model signals.
 
 ---
 
@@ -72,9 +85,7 @@ cross-model analysis)
                         Verdict
 ```
 
----
-
-## The 6 Advisors
+### The 6 Advisors
 
 | # | Name | Model | Core Question | What They Catch |
 |---|------|-------|---------------|-----------------|
@@ -85,7 +96,9 @@ cross-model analysis)
 | 5 | Volta | Opus | "What does this cost at 10x load?" | N+1 queries, missing indexes, invisible-in-dev costs |
 | 6 | Sentinel | Codex | "How do I break this on purpose?" | Auth gaps, injection vectors, race conditions, data loss |
 
-Each advisor has a declared scope boundary — the peer review layer catches what they miss.
+Cross-model advisors (Stranger on Codex, Sentinel on Codex) catch blind spots that
+same-model analysis misses. When Opus and Codex independently agree, that's the
+strongest signal. When they disagree, that's the highest-value finding.
 
 ---
 
@@ -95,92 +108,63 @@ Each advisor has a declared scope boundary — the peer review layer catches wha
 |------|------|--------|------|-----------|
 | Full | *(default)* | 12 (6 advisors + 5 reviewers + chairman) | ~2-3 min | ~$3-5 |
 | No-Review | `--no-review` | 7 (6 advisors + chairman) | ~1.5 min | ~$2 |
-| No-Codex | `--no-codex` | 8 (4 advisors + 3 reviewers + chairman) | ~2 min | ~$3 |
+| No-Codex | `--no-codex` | 8 (Opus only) | ~2 min | ~$3 |
 | Lite | `--mode lite` | 4 (Cassandra + Mies + Navigator + chairman) | ~1 min | ~$1 |
 
 Flags combine naturally: `--no-review --no-codex` = 5 agents. `--mode lite` implies both.
 
----
+Additional flags: `--transcript` saves raw agent outputs separately.
 
-## Configuration
-
-| Flag | Effect | Default |
-|------|--------|---------|
-| `--mode lite` | Cassandra + Mies + Navigator + Chairman only | `full` |
-| `--no-review` | Skip peer review phase | review ON |
-| `--no-codex` | Opus-only, no Codex agents | Codex ON |
-| `--transcript` | Save raw agent outputs separately | OFF |
-
----
-
-## Example Output
-
-```
-## Hydra Verdict: auth-middleware-refactor
-
-**Solid refactor with one critical gap in token refresh handling.**
-
-The middleware correctly centralizes auth checks, but the refresh token
-flow has a race condition under concurrent requests — Cassandra and
-Sentinel (cross-model consensus) both flagged this independently.
-Mies identified two abstraction layers that can be collapsed.
-
-**Top Actions:**
-1. Add mutex around token refresh in auth/middleware.ts:47-62
-2. Remove SessionValidatorFactory — inline the 3-line check (auth/validators.ts)
-3. Add integration test for concurrent refresh scenario
-
-**Key Tensions:**
-- Navigator vs Mies on separating auth/authz modules (cross-model:
-  Volta sided with Mies). Ruling: keep combined until second consumer exists.
-
-Full report: .hydra/reports/hydra-20260331T144523-auth-middleware-refactor.md
-```
-
----
-
-## How Codex Integration Works
-
-The Stranger and Sentinel run on OpenAI's Codex (GPT-5.4) via the Codex CLI plugin. Two of the
-five peer reviewers also run on Codex. This matters because:
-
-- **Different training data** catches different bugs. Opus might miss a performance
-  pattern that Codex flags, and vice versa.
-- **Cross-model consensus** (both models independently agree) is a stronger signal than
-  same-model agreement.
-- **Cross-model divergence** (models disagree) is the highest-value signal — the chairman
-  surfaces these prominently.
-
-When Codex is unavailable, Hydra runs Opus-only. You still get four advisors, three
-reviewers, and a chairman — just without the cross-model dimension.
-
----
-
-## Cost
-
-Full Hydra runs 12 parallel agents and costs roughly $3-5. Lite mode costs around $1.
 Think of it as a 2-minute panel review by six specialists — cheaper than a missed
 production incident.
 
-Reports are saved to `.hydra/reports/` (auto-gitignored) for reference.
-
 ---
 
-## Prerequisites
+## FAQ
 
-- **Claude Code** — required. Hydra runs as a Claude Code skill.
-- **Codex CLI plugin** — optional. Enables cross-model analysis (Stranger, Sentinel, and 2
-  Codex reviewers). Without it, Hydra auto-falls back to `--no-codex` mode.
+<details>
+<summary><strong>Is my code sent to OpenAI?</strong></summary>
+
+In full mode, your code is sent to both Anthropic (Claude Opus) and OpenAI (Codex GPT-5.4).
+Use `--no-codex` to keep code Anthropic-only. Hydra shows which providers receive your
+code in the cost confirmation before any agents run.
+</details>
+
+<details>
+<summary><strong>Why not just ask Claude to review my code?</strong></summary>
+
+A single model call gives you one perspective. Hydra gives you six specialists that each
+ask a fundamentally different question, five reviewers that challenge their claims, and a
+chairman that synthesizes a verdict. Cross-model analysis (Opus + Codex) catches blind
+spots that same-model repetition misses.
+
+Best for: Architecture decisions, security-critical code, refactoring tradeoffs.
+Just ask Claude for: Syntax fixes, factual lookups, code generation, style questions.
+</details>
+
+<details>
+<summary><strong>Do I need the Codex plugin?</strong></summary>
+
+No. Codex is optional. Without it, Hydra auto-falls back to Opus-only mode (4 advisors +
+3 reviewers + chairman = 8 agents). You still get multi-perspective analysis — just
+without the cross-model dimension.
+</details>
+
+<details>
+<summary><strong>How much does it cost?</strong></summary>
+
+Full mode: ~$3-5 per review (12 agents). Lite mode: ~$1 (4 agents). These costs are for
+the API calls to Claude and Codex — charged to your own API accounts. Hydra always shows
+the cost estimate and asks for confirmation before running.
+</details>
 
 ---
 
 ## Attribution
 
-The multi-agent council approach is adapted from Andrej Karpathy's LLM Council
-methodology — the idea that multiple independent AI perspectives, cross-examined and
-synthesized, produce better judgments than any single model call.
-
----
+Built on [Andrej Karpathy's LLM Council](https://x.com/karpathy) methodology — multiple
+independent AI perspectives, cross-examined and synthesized, produce better judgments than
+any single model call.
 
 ## License
 
