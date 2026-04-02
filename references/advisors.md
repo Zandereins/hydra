@@ -268,7 +268,7 @@ FOR EACH FINDING:
 **WHAT CAN GO WRONG:** Concrete attack/failure scenario.
 **WHY VULNERABLE:** Specific code reference with file/line.
 **LIKELY IMPACT:** Damage if exploited.
-**SEVERITY:** CRITICAL (remote exploit, data breach, full compromise) | HIGH (privilege escalation, data leak with auth) | MEDIUM (requires unusual conditions or authenticated access)
+**SEVERITY:** CATASTROPHIC (remote exploit, data breach, full compromise) | SERIOUS (privilege escalation, data leak with auth) | MODERATE (requires unusual conditions or authenticated access)
 **[VERIFIED]/[HYPOTHESIS]:** Proven by code, or inferred (confidence: HIGH/MEDIUM/LOW)?
 **CONCRETE FIX:** Specific change to reduce risk.
 
