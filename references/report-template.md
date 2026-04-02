@@ -51,7 +51,7 @@ Create `.hydra/.gitignore` with `*` on first run.
 |-----------------|----------|-------------|
 {{CHAIRMAN_CONSENSUS_MAP}}
 <!-- Orchestrator: extract the Consensus Map table from the chairman's output
-     (produced per Rule 8). The chairman owns position overrides and findings. -->
+     (produced per CONSENSUS MAP rule). The chairman owns position overrides and findings. -->
 
 ### Cross-Model Signals
 

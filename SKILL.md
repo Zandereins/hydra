@@ -133,8 +133,8 @@ Estimated: {{TIME}}, {{COST}}.
 Alternatives:
   --mode lite     → 4 agents, ~$0.50-1.50, ~1 min (3 Opus advisors, no review)
   --no-review     → lean: 7 agents, ~$2, ~1.5 min (no review)
-  --no-codex      → private: 10 agents, ~$4, ~2 min (Opus only)
-  --no-review --no-codex → stealth: 7 agents, ~$1.50-2, ~1 min (Opus only, no review)
+  --no-codex      → private: 10 agents, ~$3-4, ~2 min (Opus only)
+  --no-review --no-codex → stealth: 7 agents, ~$1-2, ~1 min (Opus only, no review)
 
 Proceed? [Y/n/lite]
 ```
@@ -246,7 +246,7 @@ After each advisor completes, validate the response structurally:
 - If response is completely empty or ≤2 lines without "no findings": treat as timeout.
 **Timeout: 120 seconds per advisor.**
 
-**Scan Point:** After each advisor completes, run the secrets scan (Step 4 patterns)
+**Scan Point:** After each advisor completes, run the secrets scan patterns (Step 0.4)
 on the advisor's output. Silent redact — do not discard the response. This prevents
 advisors from reconstructing redacted secrets or hallucinating plausible values.
 
@@ -276,7 +276,7 @@ Print: `[Hydra] Peer review started ({{N}} reviewers)...`
 As each reviewer completes: `[Hydra] Reviewer {{N}} done ({{M}}/{{TOTAL}})`
 **Timeout: 120 seconds per reviewer.**
 
-**Scan Point:** After each reviewer completes, run the secrets scan (Step 4 patterns)
+**Scan Point:** After each reviewer completes, run the secrets scan patterns (Step 0.4)
 on the reviewer's output. Silent redact — do not discard the response.
 
 ### Step 5: Chairman Synthesis
@@ -297,7 +297,7 @@ After the verdict, produce a DELTA BLOCK (outside word limit, max 150 words):
 **Progress:** [X of Y previous actions addressed]
 ```
 
-**Scan Point:** After the chairman completes, run the secrets scan (Step 4 patterns)
+**Scan Point:** After the chairman completes, run the secrets scan patterns (Step 0.4)
 on the chairman's output. Silent redact — do not discard the response.
 
 ### Step 6: Generate Report
