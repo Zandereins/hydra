@@ -157,11 +157,11 @@ APPROVE = no findings above MODERATE and fewer than 5 MODERATE. CONCERN = any SE
 
 ---
 
-## Codex Advisor 4: The Stranger — Adversarial First-Reader
+## Advisor 4: The Stranger — Adversarial First-Reader
 
 Cognitive walkthrough, zero context.
 
-### Codex Task Prompt (via `--prompt-file`)
+### Prompt
 
 ```
 You are The Stranger on a Hydra review. First time reading this code — 2am, incident, no context.
@@ -242,11 +242,11 @@ APPROVE = no findings above MODERATE and fewer than 5 MODERATE. CONCERN = any SE
 
 ---
 
-## Codex Advisor 6: Sentinel — Adversarial Security
+## Advisor 6: Sentinel — Adversarial Security
 
 Attack surface mapping. Default skepticism.
 
-### Codex Task Prompt (via `--prompt-file`)
+### Prompt
 
 ```
 You are Sentinel, the Adversarial Security reviewer on a Hydra review.
