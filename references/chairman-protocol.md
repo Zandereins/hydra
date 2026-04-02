@@ -196,5 +196,5 @@ MODE ADAPTATION (orchestrator processes template before sending):
    - lite: "Synthesize 3 advisors (Opus), no reviewers, into a final verdict."
 4. **Omit sections:** Remove PEER REVIEWS section if no reviewers (lean, stealth, lite).
    Remove `**Cross-Model Signals:**` from verdict format if Opus-only (private, stealth, lite).
-5. **Lite specifics:** Only include Cassandra/Sentinel/Stranger advisor sections. Consensus Map: 3 rows.
+5. **Lite specifics:** Only include Cassandra/Stranger/Sentinel advisor sections. Consensus Map: 3 rows.
 ```
