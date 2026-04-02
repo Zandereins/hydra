@@ -88,7 +88,7 @@ Include at least one compound failure if the code warrants it.
 Total max 2500 words — HARD ceiling. Reduce findings or depth to stay within.
 
 End your response with: `POSITION: APPROVE | CONCERN | REJECT` and a one-line rationale.
-APPROVE = no findings above MODERATE. CONCERN = SERIOUS findings. REJECT = CATASTROPHIC or unresolvable risk.
+APPROVE = no findings above MODERATE and fewer than 5 MODERATE. CONCERN = any SERIOUS finding OR 5+ MODERATE. REJECT = CATASTROPHIC or unresolvable risk.
 ```
 
 ---
@@ -123,7 +123,7 @@ If external dependencies present, evaluate at least one for stdlib replacement.
 Total max 1200 words — HARD ceiling.
 
 End your response with: `POSITION: APPROVE | CONCERN | REJECT` and a one-line rationale.
-APPROVE = no findings above MODERATE. CONCERN = SERIOUS findings. REJECT = CATASTROPHIC or unresolvable risk.
+APPROVE = no findings above MODERATE and fewer than 5 MODERATE. CONCERN = any SERIOUS finding OR 5+ MODERATE. REJECT = CATASTROPHIC or unresolvable risk.
 ```
 
 ---
@@ -161,7 +161,7 @@ Consider: if the original author leaves, can a new developer safely modify this?
 Total max 1800 words — HARD ceiling.
 
 End your response with: `POSITION: APPROVE | CONCERN | REJECT` and a one-line rationale.
-APPROVE = no findings above MODERATE. CONCERN = SERIOUS findings. REJECT = CATASTROPHIC or unresolvable risk.
+APPROVE = no findings above MODERATE and fewer than 5 MODERATE. CONCERN = any SERIOUS finding OR 5+ MODERATE. REJECT = CATASTROPHIC or unresolvable risk.
 ```
 
 ---
@@ -202,7 +202,7 @@ Lying comments = HIGH PRIORITY.
 Total max 1500 words — HARD ceiling.
 
 End your response with: `POSITION: APPROVE | CONCERN | REJECT` and a one-line rationale.
-APPROVE = no findings above MODERATE. CONCERN = SERIOUS findings. REJECT = CATASTROPHIC or unresolvable risk.
+APPROVE = no findings above MODERATE and fewer than 5 MODERATE. CONCERN = any SERIOUS finding OR 5+ MODERATE. REJECT = CATASTROPHIC or unresolvable risk.
 ```
 
 ---
@@ -243,7 +243,7 @@ NOT YOURS: Failure chains (Cassandra), complexity removal (Mies), boundaries (Na
 Total max 1500 words — HARD ceiling.
 
 End your response with: `POSITION: APPROVE | CONCERN | REJECT` and a one-line rationale.
-APPROVE = no findings above MODERATE. CONCERN = SERIOUS findings. REJECT = CATASTROPHIC or unresolvable risk.
+APPROVE = no findings above MODERATE and fewer than 5 MODERATE. CONCERN = any SERIOUS finding OR 5+ MODERATE. REJECT = CATASTROPHIC or unresolvable risk.
 ```
 
 ---
@@ -285,5 +285,5 @@ NOT YOURS: Operational failure chains/assumptions (Cassandra), performance (Volt
 Total max 1800 words — HARD ceiling.
 
 End your response with: `POSITION: APPROVE | CONCERN | REJECT` and a one-line rationale.
-APPROVE = no findings above MODERATE. CONCERN = SERIOUS findings. REJECT = CATASTROPHIC or unresolvable risk.
+APPROVE = no findings above MODERATE and fewer than 5 MODERATE. CONCERN = any SERIOUS finding OR 5+ MODERATE. REJECT = CATASTROPHIC or unresolvable risk.
 ```

@@ -162,8 +162,8 @@ RULES:
 - **CONSENSUS MAP:** After the verdict, produce a CONSENSUS MAP table (outside word limit).
   Use each advisor's POSITION (APPROVE/CONCERN/REJECT) and key finding (max 60 chars).
   If an advisor timed out: mark as N/A. If a POSITION contradicts the advisor's own
-  severity ratings (e.g., APPROVE with multiple SERIOUS findings), override to CONCERN
-  with rationale. Format:
+  severity ratings (e.g., APPROVE with SERIOUS findings, or APPROVE with 5+ MODERATE),
+  override to CONCERN and note the inconsistency. Format:
   | Advisor (Model) | Position | Key Finding |
   |-----------------|----------|-------------|
 - **NO HEDGING:** No hedging, no "it depends", no meta-commentary.
