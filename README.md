@@ -58,7 +58,7 @@ hydra iterate
 ```
 
 Hydra asks for cost confirmation before running. Auto-detects Codex; falls back to
-Opus-only if unavailable. Iterations default to Lite mode (~$0.50-2) and show a
+Opus-only if unavailable. Iterations default to Lite mode (~$0.50-1.50) and show a
 delta: what's fixed, what remains, what's new.
 
 **Requirements:** [Claude Code](https://claude.ai/code) (required) |
@@ -90,12 +90,13 @@ Advisors run in parallel, then 5 peer reviewers cross-examine their work
 
 ## Modes
 
-| Mode | Agents | Est. Cost |
-|------|--------|-----------|
-| **Full** *(default)* | 12 (6 advisors + 5 reviewers + chairman) | ~$2-3 |
-| `--no-review` | 7 (6 advisors + chairman) | ~$2 |
-| `--no-codex` | 10 (all Opus) | ~$4 |
-| `--mode lite` | 4 (Cassandra + Mies + Navigator + chairman) | ~$0.50-2 |
+| Mode | CLI | Agents | Est. Cost |
+|------|-----|--------|-----------|
+| **full** *(default)* | — | 12 (6 advisors + 5 reviewers + chairman) | ~$2-3 |
+| **lean** | `--no-review` | 7 (6 advisors + chairman) | ~$2 |
+| **private** | `--no-codex` | 10 (all Opus) | ~$3-4 |
+| **stealth** | `--no-review --no-codex` | 7 (all Opus, no review) | ~$1-2 |
+| **lite** | `--mode lite` | 4 (Cassandra + Mies + Navigator + chairman) | ~$0.50-1.50 |
 
 Flags combine: `--no-review --no-codex` = 7 agents. `--mode lite` implies both.
 `--transcript` saves raw agent outputs separately.
@@ -122,7 +123,7 @@ Hydra reviews aren't one-shot. Fix the issues, then run `hydra iterate` to verif
 ```
 
 Iterations auto-detect the last report, diff only what changed, and default to
-Lite mode. Run as many cycles as needed — each one costs ~$0.50-2.
+Lite mode. Run as many cycles as needed — each one costs ~$0.50-1.50.
 
 Triggers: `hydra iterate`, `hydra re-review`, `hydra follow-up`, `check my fixes`.
 
@@ -175,17 +176,17 @@ spawning agents.
 
 ## FAQ
 
-**How much does it cost?** Full: ~$2-3. Lite: ~$0.50-0.80. These are API costs charged
+**How much does it cost?** Full: ~$2-3. Lite: ~$0.50-1.50. These are API costs charged
 to your accounts. Hydra shows estimates before running.
 
 **Where are reports?** `.hydra/reports/` in your project root (gitignored). Run
 `hydra history` to list past reviews.
 
-**Without Codex?** All 6 advisors run on Opus. Same perspectives, no cross-model signal.
-Use `--no-codex` to keep code Anthropic-only.
+**Without Codex?** All 6 advisors run on Opus (10 agents total with reviewers).
+Same perspectives, no cross-model signal. Use `--no-codex` to keep code Anthropic-only.
 
 **How do iterations work?** Fix issues, run `hydra iterate`. Hydra diffs what changed,
-defaults to Lite (~$0.50-0.80), shows a delta: fixed / remaining / new.
+defaults to Lite (~$0.50-1.50), shows a delta: fixed / remaining / new.
 
 ---
 
