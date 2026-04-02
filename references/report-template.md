@@ -15,6 +15,7 @@ Create `.hydra/.gitignore` with `*` on first run.
 - Omit `## Peer Reviews` entirely if `--no-review` or `--mode lite`.
 - Omit `### Cross-Model Signals` if running Opus-only (`--no-codex` or `--mode lite`).
 - In `--no-codex` mode: replace "Codex" with "Opus" in Model column and section headings.
+- Thresholds and mode definitions: see SKILL.md Modes table (single source of truth).
 - If fewer than expected responded, add after the Verdict heading:
   `> **Note:** Degraded confidence — only {{N}} of {{M}} responded.`
 
