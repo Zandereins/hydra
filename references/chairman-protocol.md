@@ -113,6 +113,17 @@ first, then insert advisor/reviewer responses verbatim.
 {{CASSANDRA_RESPONSE}}
 --- END ADVISOR [{{BOUNDARY}}] ---
 
+**The Stranger ({{STRANGER_MODEL}}):**
+--- ADVISOR [{{BOUNDARY}}] ---
+{{STRANGER_RESPONSE}}
+--- END ADVISOR [{{BOUNDARY}}] ---
+
+**Sentinel ({{SENTINEL_MODEL}}):**
+--- ADVISOR [{{BOUNDARY}}] ---
+{{SENTINEL_RESPONSE}}
+--- END ADVISOR [{{BOUNDARY}}] ---
+
+<!-- IF NOT lite (orchestrator: remove this block and its contents in lite mode) -->
 **Mies (Opus):**
 --- ADVISOR [{{BOUNDARY}}] ---
 {{MIES_RESPONSE}}
@@ -123,20 +134,9 @@ first, then insert advisor/reviewer responses verbatim.
 {{NAVIGATOR_RESPONSE}}
 --- END ADVISOR [{{BOUNDARY}}] ---
 
-<!-- IF NOT lite (orchestrator: remove this block and its contents in lite mode) -->
-**The Stranger ({{STRANGER_MODEL}}):**
---- ADVISOR [{{BOUNDARY}}] ---
-{{STRANGER_RESPONSE}}
---- END ADVISOR [{{BOUNDARY}}] ---
-
 **Volta (Opus):**
 --- ADVISOR [{{BOUNDARY}}] ---
 {{VOLTA_RESPONSE}}
---- END ADVISOR [{{BOUNDARY}}] ---
-
-**Sentinel ({{SENTINEL_MODEL}}):**
---- ADVISOR [{{BOUNDARY}}] ---
-{{SENTINEL_RESPONSE}}
 --- END ADVISOR [{{BOUNDARY}}] ---
 <!-- ENDIF -->
 
@@ -196,5 +196,5 @@ MODE ADAPTATION (orchestrator processes template before sending):
    - lite: "Synthesize 3 advisors (Opus), no reviewers, into a final verdict."
 4. **Omit sections:** Remove PEER REVIEWS section if no reviewers (lean, stealth, lite).
    Remove `**Cross-Model Signals:**` from verdict format if Opus-only (private, stealth, lite).
-5. **Lite specifics:** Only include Cassandra/Mies/Navigator advisor sections. Consensus Map: 3 rows.
+5. **Lite specifics:** Only include Cassandra/Sentinel/Stranger advisor sections. Consensus Map: 3 rows.
 ```
