@@ -44,6 +44,54 @@ pre-merge deep reviews.
 
 ---
 
+## How It Works
+
+```mermaid
+graph TD
+    A[User Code + Question] --> B[Pre-flight + Context Enrichment]
+    B --> C[Frame Question]
+
+    C --> D1[Cassandra · Opus]
+    C --> D2[Mies · Opus]
+    C --> D3[Navigator · Opus]
+    C --> D4[Volta · Opus]
+    C --> D5[Stranger · Codex]
+    C --> D6[Sentinel · Codex]
+
+    subgraph Advisors — parallel, independent
+        D1
+        D2
+        D3
+        D4
+        D5
+        D6
+    end
+
+    D1 & D2 & D3 & D4 & D5 & D6 --> E[All Advisor Outputs]
+
+    E --> R1[Reviewer 1 · Opus]
+    E --> R2[Reviewer 2 · Opus]
+    E --> R3[Reviewer 3 · Opus]
+    E --> R4[Reviewer 4 · Codex]
+    E --> R5[Reviewer 5 · Codex]
+
+    subgraph Cross-Examination — each reviewer sees ALL outputs
+        R1
+        R2
+        R3
+        R4
+        R5
+    end
+
+    R1 & R2 & R3 & R4 & R5 --> F[Chairman · Opus]
+    F --> G[Verdict + Report]
+    G -. hydra iterate .-> B
+```
+
+Six advisors analyze independently in parallel — four on Opus, two on Codex. Five reviewers then cross-examine all advisor outputs (the key differentiator: no advisor sees another's work, but every reviewer sees everything). The chairman synthesizes a final verdict. After fixes, `hydra iterate` re-enters the pipeline in Lite mode, producing a delta of what changed.
+
+---
+
 ## Quick Start
 
 ```bash
