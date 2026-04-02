@@ -89,6 +89,17 @@ relevant step.
    lead + timestamp from the report. Default to `--mode lite` unless user passes `--mode full`.
    Print: `[Hydra] Iterating on: {{PREV_REPORT}} ({{AGE}} ago)`
    If no previous report exists: warn user, fall back to fresh review.
+
+   **Report validation:** If a previous report IS found, verify it contains:
+   - `## Verdict` heading with content below it
+   - `**Top Actions:**` block with at least one numbered item
+   - Timestamp in filename matching `hydra-[0-9]{8}T[0-9]{6}-*.md`
+   If validation fails: `[Hydra] Previous report incomplete — missing: {{FIELDS}}. Running fresh review.`
+
+   **State file (preferred):** If `.hydra/state.json` exists, use it instead of parsing
+   the markdown report. Schema: `{version: 1, latest: {report_path, timestamp_unix,
+   top_actions[], verdict_lead, mode, reviewed_files[]}}`. Written by Step 6 after each
+   successful review. Falls back to `ls -1t` + markdown parsing if state.json is absent.
 6. **Generate boundary token** for delimiter security:
    ```bash
    HYDRA_BOUNDARY="HYDRA-$(openssl rand -hex 6)"
@@ -222,8 +233,13 @@ no codex-rescue subagent.
 All advisors in parallel. Print: `[Hydra] Advisors spawned ({{N}}). Waiting...`
 As each completes: `[Hydra] {{Name}} done ({{M}}/{{N}})`
 
-After each advisor completes: if output < 50 tokens and does NOT contain "no findings",
-"no issues", or "no further findings", discard and treat as timeout.
+After each advisor completes, validate the response structurally:
+- **Valid response** must contain: (a) a `POSITION: APPROVE|CONCERN|REJECT` line,
+  (b) at least one advisor-specific finding field OR an explicit "no findings"/"no issues"
+  statement, and (c) at least 3 lines of substantive content (excluding blank lines).
+- If response fails validation and does NOT contain "no findings"/"no issues":
+  treat as invalid (not timeout). Mark as `[INVALID — missing POSITION/fields]` in report.
+- If response is completely empty or ≤2 lines: treat as timeout.
 **Timeout: 120 seconds per advisor.**
 
 **Scan Point:** After each advisor completes, run the secrets scan (Step 4 patterns)
