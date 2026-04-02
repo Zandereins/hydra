@@ -77,6 +77,8 @@ relevant step.
    All redactions use the SAME opaque marker — no type information leaks to agents.
    Orchestrator keeps internal mapping for user-facing reports only.
    If secrets found: show redacted locations and ask user to confirm before proceeding.
+
+   **Scan procedure name: `secrets-scan`** — referenced by scan points in Steps 3-6.
 5. **Iteration detection** (skip if fresh review):
    ```bash
    ls -1t .hydra/reports/hydra-*.md 2>/dev/null | grep -v transcript | head -1
@@ -103,6 +105,9 @@ relevant step.
    ```bash
    HYDRA_BOUNDARY="HYDRA-$(openssl rand -hex 6)"
    ```
+   If `openssl` is unavailable: `HYDRA_BOUNDARY="HYDRA-$(head -c 6 /dev/urandom | xxd -p)"`.
+   If both fail: abort with `[Hydra] Cannot generate secure boundary token. Aborting.`
+
    Store the result (e.g., `HYDRA-a3f7c9e1b042`) — you will interpolate it as
    `{{BOUNDARY}}` into all advisor preambles (Step 3) and reviewer delimiters (Step 4).
    This prevents user code or advisor output from escaping data delimiters.
@@ -246,9 +251,7 @@ After each advisor completes, validate the response structurally:
 - If response is completely empty or ≤2 lines without "no findings": treat as timeout.
 **Timeout: 120 seconds per advisor.**
 
-**Scan Point:** After each advisor completes, run the secrets scan patterns (Step 0.4)
-on the advisor's output. Silent redact — do not discard the response. This prevents
-advisors from reconstructing redacted secrets or hallucinating plausible values.
+**Scan:** Run secrets-scan (Step 0.4) on each advisor output. Silent redact.
 
 **Persist advisor outputs:** Write each advisor's response to
    `$HYDRA_TMP/advisor-{name}.md` immediately after completion. If the session is
@@ -276,8 +279,7 @@ Print: `[Hydra] Peer review started ({{N}} reviewers)...`
 As each reviewer completes: `[Hydra] Reviewer {{N}} done ({{M}}/{{TOTAL}})`
 **Timeout: 120 seconds per reviewer.**
 
-**Scan Point:** After each reviewer completes, run the secrets scan patterns (Step 0.4)
-on the reviewer's output. Silent redact — do not discard the response.
+**Scan:** Run secrets-scan on each reviewer output. Silent redact.
 
 ### Step 5: Chairman Synthesis
 
@@ -297,16 +299,13 @@ After the verdict, produce a DELTA BLOCK (outside word limit, max 150 words):
 **Progress:** [X of Y previous actions addressed]
 ```
 
-**Scan Point:** After the chairman completes, run the secrets scan patterns (Step 0.4)
-on the chairman's output. Silent redact — do not discard the response.
+**Scan:** Run secrets-scan on chairman output. Silent redact.
 
 ### Step 6: Generate Report
 
 Read `references/report-template.md` for the template. Generate inline (no extra agent).
 
-**Final Scan:** Run secrets scan on the assembled report BEFORE writing to disk.
-If findings: redact and append `> Note: Potential secrets in agent output — auto-redacted.`
-If `--transcript`: apply the same secrets scan to the transcript file before writing.
+**Final scan:** Run secrets-scan on assembled report before disk write. If findings: redact and append note. If --transcript: scan transcript file too.
 
 **Save to:** `.hydra/reports/hydra-YYYYMMDDTHHMMSS-{slug}.md`
 Slug: derive from the first 3-4 words of the title via Bash:
