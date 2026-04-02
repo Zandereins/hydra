@@ -32,21 +32,30 @@ relevant step.
 
 ## Modes
 
-| Mode | Flag | Advisors | Reviewers | Chairman | Total |
-|------|------|----------|-----------|----------|-------|
-| Full | *(default)* | 6 (4 Opus + 2 Codex) | 5 (3 Opus + 2 Codex) | 1 Opus | 12 |
-| No-Review | `--no-review` | 6 (4 Opus + 2 Codex) | 0 | 1 Opus | 7 |
-| No-Codex | `--no-codex` | 6 (all Opus) | 3 (Opus only) | 1 Opus | 10 |
-| Lite | `--mode lite` | 3 (Cassandra + Mies + Navigator) | 0 | 1 Opus | 4 |
+| Preset | CLI | Advisors | Reviewers | Chairman | Total |
+|--------|-----|----------|-----------|----------|-------|
+| **full** | *(default)* | 6 (4 Opus + 2 Codex) | 5 (3 Opus + 2 Codex) | 1 Opus | 12 |
+| **lean** | `--no-review` | 6 (4 Opus + 2 Codex) | 0 | 1 Opus | 7 |
+| **private** | `--no-codex` | 6 (all Opus) | 3 (Opus only) | 1 Opus | 10 |
+| **stealth** | `--no-review --no-codex` | 6 (all Opus) | 0 | 1 Opus | 7 |
+| **lite** | `--mode lite` | 3 (Cassandra + Mies + Navigator) | 0 | 1 Opus | 4 |
 
-**Minimum thresholds:**
+**Minimum thresholds** — formula: `ceil(N × 0.6)`, min 2:
 
-| Mode | Min Advisors | Min Reviewers |
-|------|-------------|---------------|
-| Full | 4 of 6 | 3 of 5 |
-| No-Review | 4 of 6 | — |
-| No-Codex | 4 of 6 | 2 of 3 |
-| Lite | 2 of 3 | — |
+| Preset | Min Advisors | Min Reviewers |
+|--------|-------------|---------------|
+| full | 4 of 6 | 3 of 5 |
+| lean | 4 of 6 | — |
+| private | 4 of 6 | 2 of 3 |
+| stealth | 4 of 6 | — |
+| lite | 2 of 3 | — |
+
+**Mode resolution:** Flags resolve to presets deterministically:
+- `--no-review` alone → **lean**
+- `--no-codex` alone → **private**
+- `--no-review --no-codex` → **stealth**
+- `--mode lite` → **lite** (ignores other flags with warning)
+- No flags → **full**
 
 ---
 
@@ -112,9 +121,10 @@ Hydra: {{AGENT_COUNT}} agents. {{PROVIDER_NOTE}}.
 Estimated: {{TIME}}, {{COST}}.
 
 Alternatives:
-  --mode lite  → 4 agents, ~$1.50-2, ~1 min (Opus only, no review)
-  --no-review  → 7 agents, ~$2, ~1.5 min
-  --no-codex   → 10 agents, ~$4, ~2 min (Opus only)
+  --mode lite     → 4 agents, ~$1.50-2, ~1 min (3 Opus advisors, no review)
+  --no-review     → lean: 7 agents, ~$2, ~1.5 min (no review)
+  --no-codex      → private: 10 agents, ~$4, ~2 min (Opus only)
+  --no-review --no-codex → stealth: 7 agents, ~$1.50-2, ~1 min (Opus only, no review)
 
 Proceed? [Y/n/lite]
 ```
@@ -162,7 +172,7 @@ and each advisor's unique prompt. Interpolate `{{FRAMED_QUESTION}}`,
 `{{ENRICHED_CONTEXT}}`, and `{{BOUNDARY}}` (the token from Step 0) into the Common
 Preamble, then append each advisor's unique section.
 
-**Which advisors** — see Modes table above. In `--no-codex` mode, Stranger and Sentinel
+**Which advisors** — see Modes table above. In private/stealth mode, Stranger and Sentinel
 run as Opus agents (same prompts, spawn via Agent tool instead of Codex). All 6
 perspectives are preserved; only cross-model diversity is lost.
 
@@ -220,9 +230,16 @@ After each advisor completes: if output < 50 tokens and does NOT contain "no fin
 on the advisor's output. Silent redact — do not discard the response. This prevents
 advisors from reconstructing redacted secrets or hallucinating plausible values.
 
+**Codex cascade check:** If both Codex advisors (Stranger + Sentinel) fail or are
+invalid, auto-switch to `--no-codex` for the reviewer phase. Print:
+`[Hydra] Both Codex advisors failed. Switching to Opus-only for reviewers.`
+If only one Codex advisor fails: proceed normally, count toward minimum.
+If failure reason is auth error (401/403) or script-not-found: switch immediately
+even on a single failure (not transient).
+
 ### Step 4: Peer Review (parallel)
 
-**Skip entirely** if `--no-review` or `--mode lite`.
+**Skip entirely** if mode has no review phase (lean, stealth, lite).
 
 Read `references/review-protocol.md` for the full protocol.
 
