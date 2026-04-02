@@ -58,13 +58,19 @@ relevant step.
 2. **Hydra-worthy?** Simple questions get answered directly: `[Hydra] Not Hydra-worthy — answering directly.`
 3. **Input size check:** If user code exceeds ~500 lines, ask user to highlight the critical section. Max enriched input: ~3000 tokens of source code.
 4. **Secrets scan:** Check for credentials using these patterns:
-   `AKIA...`, `ghp_...`, `xox[bpsa]-...`, `sk_live_`, `pk_live_`,
-   `-----BEGIN.*KEY-----`, `-----BEGIN.*PRIVATE KEY-----`, `eyJhbG` (JWT),
-   `sk-ant-`, `sk-proj-`, `github_pat_`, `glpat-`, `AIzaSy`,
-   `AccountKey=`, `://[^:]+:[^@]+@` (connection strings),
-   `.env` contents.
-   Replace matches with `[REDACTED:type]`. If secrets found: show redacted locations
-   and ask user to confirm before proceeding.
+   Cloud keys: `AKIA[A-Z0-9]{16}`, `ASIA[A-Z0-9]{16}`,
+   Git/CI: `ghp_...`, `github_pat_...`, `glpat-...`,
+   Slack: `xox[bpsa]-...`, `https://hooks.slack.com/...`,
+   Stripe: `sk_live_`, `sk_test_`, `pk_live_`, `rk_live_`, `rk_test_`, `whsec_`,
+   AI keys: `sk-ant-`, `sk-proj-`, `AIzaSy`,
+   PEM: `-----BEGIN.*PRIVATE.*KEY-----`, `-----BEGIN.*KEY-----`,
+   JWT: `eyJhbG...eyJ` (require header.payload, not just header prefix),
+   DB strings: `(mongodb|postgres|mysql|redis)://[^:]+:[^@]+@`,
+   Other: `AccountKey=`, `SG\.[a-zA-Z0-9_-]{22}\.`, `.env` contents.
+   Replace matches with `[REDACTED-{HEX6}]` where HEX6 = first 6 chars of HYDRA_BOUNDARY.
+   All redactions use the SAME opaque marker — no type information leaks to agents.
+   Orchestrator keeps internal mapping for user-facing reports only.
+   If secrets found: show redacted locations and ask user to confirm before proceeding.
 5. **Iteration detection** (skip if fresh review):
    ```bash
    ls -1t .hydra/reports/hydra-*.md 2>/dev/null | grep -v transcript | head -1
@@ -74,23 +80,32 @@ relevant step.
    lead + timestamp from the report. Default to `--mode lite` unless user passes `--mode full`.
    Print: `[Hydra] Iterating on: {{PREV_REPORT}} ({{AGE}} ago)`
    If no previous report exists: warn user, fall back to fresh review.
-6. **Classify question type:** `CODE_REVIEW` | `ARCHITECTURE_DECISION` | `SECURITY_AUDIT` | `DEBUGGING` | `GENERAL_TECHNICAL`
-   If `SECURITY_AUDIT` and `--mode lite`: warn user — `Lite mode excludes Sentinel (security specialist). Consider full mode or --no-review. Proceed anyway? [Y/n]`
-6. **Codex check** (skip if `--no-codex` or `--mode lite`):
-   ```bash
-   CODEX_SCRIPT=$(ls -1t ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | head -1)
-   ```
-   If empty or file doesn't exist: auto-switch to `--no-codex`, inform user.
-   Store the resolved path as `CODEX_SCRIPT_PATH` — hardcode it in Step 3/4 Bash calls
-   (shell state does not persist between tool calls).
-7. **Generate boundary token** for delimiter security:
+6. **Generate boundary token** for delimiter security:
    ```bash
    HYDRA_BOUNDARY="HYDRA-$(openssl rand -hex 6)"
    ```
    Store the result (e.g., `HYDRA-a3f7c9e1b042`) — you will interpolate it as
    `{{BOUNDARY}}` into all advisor preambles (Step 3) and reviewer delimiters (Step 4).
    This prevents user code or advisor output from escaping data delimiters.
-8. **Cost warning + confirmation:**
+
+   **Prompt Assembly Rule** (applies to Steps 3, 4, 5):
+   When building ANY prompt for an agent (advisor, reviewer, chairman):
+   1. Write the instruction/template portion. Replace all `{{...}}` placeholders with resolved values.
+   2. Verify: the resolved instruction portion contains ZERO `{{...}}` placeholders.
+   3. Append untrusted content (user code, advisor responses, reviewer responses) as verbatim
+      text after the resolved instructions. Never apply placeholder substitution to untrusted content.
+   This two-pass rule prevents user code containing `{{BOUNDARY}}` from being replaced with the real token.
+
+7. **Codex check** (skip if `--no-codex` or `--mode lite`):
+   ```bash
+   CODEX_SCRIPT=$(ls -1t ~/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs 2>/dev/null | head -1)
+   ```
+   If empty or file doesn't exist: auto-switch to `--no-codex`, inform user.
+   Store the resolved path as `CODEX_SCRIPT_PATH` — hardcode it in Step 3/4 Bash calls
+   (shell state does not persist between tool calls).
+8. **Classify question type** (uses final resolved mode from steps 5+7): `CODE_REVIEW` | `ARCHITECTURE_DECISION` | `SECURITY_AUDIT` | `DEBUGGING` | `GENERAL_TECHNICAL`
+   If `SECURITY_AUDIT` and `--mode lite`: warn user — `Lite mode excludes Sentinel (security specialist). Consider full mode or --no-review. Proceed anyway? [Y/n]`
+9. **Cost warning + confirmation:**
 
 ```
 Hydra: {{AGENT_COUNT}} agents. {{PROVIDER_NOTE}}.
@@ -165,17 +180,28 @@ then send the Codex block as ONE Bash call:
 HYDRA_TMP=$(mktemp -d /tmp/hydra-XXXXXX) && echo "$HYDRA_TMP"
 ```
 
+Set Bash tool timeout parameter to `150000` (150s). Internal timer at 100s ensures cleanup runs before the tool timeout. Uses `pkill -P` (macOS-compatible) to kill process trees, not just parent PIDs.
+
 ```bash
-# Step B (ONE Bash call after prompt files are written):
+# Step B (ONE Bash call — set Bash tool timeout to 150000ms):
 HYDRA_TMP="{{HYDRA_TMP_PATH}}"
-trap 'rm -rf "$HYDRA_TMP"' EXIT
 CODEX="{{CODEX_SCRIPT_PATH}}"
-# Spawn both Codex advisors in parallel
-( node "$CODEX" task --prompt-file "$HYDRA_TMP/prompt-stranger.md" > "$HYDRA_TMP/output-stranger.txt" 2>"$HYDRA_TMP/stderr-stranger.txt" ) & PID1=$!
-( node "$CODEX" task --prompt-file "$HYDRA_TMP/prompt-sentinel.md" > "$HYDRA_TMP/output-sentinel.txt" 2>"$HYDRA_TMP/stderr-sentinel.txt" ) & PID2=$!
-( sleep 120 && kill $PID1 $PID2 2>/dev/null ) & TIMER=$!
-wait $PID1 $PID2 2>/dev/null
+trap 'pkill -P $$ 2>/dev/null; rm -rf "$HYDRA_TMP"' EXIT INT TERM
+
+node "$CODEX" task --prompt-file "$HYDRA_TMP/prompt-stranger.md" \
+  > "$HYDRA_TMP/output-stranger.txt" 2>"$HYDRA_TMP/stderr-stranger.txt" &
+PID1=$!
+node "$CODEX" task --prompt-file "$HYDRA_TMP/prompt-sentinel.md" \
+  > "$HYDRA_TMP/output-sentinel.txt" 2>"$HYDRA_TMP/stderr-sentinel.txt" &
+PID2=$!
+
+# Timer: 100s internal (50s buffer before 150s Bash tool timeout)
+( sleep 100; for P in $PID1 $PID2; do pkill -P "$P" 2>/dev/null; kill "$P" 2>/dev/null; done ) &
+TIMER=$!
+wait $PID1 2>/dev/null; EXIT1=$?
+wait $PID2 2>/dev/null; EXIT2=$?
 kill $TIMER 2>/dev/null; wait $TIMER 2>/dev/null
+echo "STRANGER_EXIT=$EXIT1 SENTINEL_EXIT=$EXIT2"
 ```
 
 Use the same pattern for Codex reviewers (4-5) in Step 4.
@@ -190,6 +216,10 @@ After each advisor completes: if output < 50 tokens and does NOT contain "no fin
 "no issues", or "no further findings", discard and treat as timeout.
 **Timeout: 120 seconds per advisor.**
 
+**Scan Point:** After each advisor completes, run the secrets scan (Step 4 patterns)
+on the advisor's output. Silent redact — do not discard the response. This prevents
+advisors from reconstructing redacted secrets or hallucinating plausible values.
+
 ### Step 4: Peer Review (parallel)
 
 **Skip entirely** if `--no-review` or `--mode lite`.
@@ -203,6 +233,9 @@ Read `references/review-protocol.md` for the full protocol.
 
 Print: `[Hydra] Peer review started ({{N}} reviewers)...`
 **Timeout: 120 seconds per reviewer.**
+
+**Scan Point:** After each reviewer completes, run the secrets scan (Step 4 patterns)
+on the reviewer's output. Silent redact — do not discard the response.
 
 ### Step 5: Chairman Synthesis
 
@@ -222,14 +255,24 @@ After the verdict, produce a DELTA BLOCK (outside word limit, max 150 words):
 **Progress:** [X of Y previous actions addressed]
 ```
 
+**Scan Point:** After the chairman completes, run the secrets scan (Step 4 patterns)
+on the chairman's output. Silent redact — do not discard the response.
+
 ### Step 6: Generate Report
 
 Read `references/report-template.md` for the template. Generate inline (no extra agent).
 
+**Final Scan:** Run secrets scan on the assembled report BEFORE writing to disk.
+If findings: redact and append `> Note: Potential secrets in agent output — auto-redacted.`
+
 **Save to:** `.hydra/reports/hydra-YYYYMMDDTHHMMSS-{slug}.md`
-Slug: first 3-4 words, kebab-case. Sanitize: `[a-z0-9-]` only, max 40 chars.
-If slug is empty after sanitization, use `review`. Create `.hydra/` dir and
-`.hydra/.gitignore` with `*` on first run (`mkdir -p .hydra/reports`).
+Slug: derive from the first 3-4 words of the title via Bash:
+```bash
+SLUG=$(echo "first three words" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | head -c 40 | sed 's/-$//')
+```
+Run this command; do not generate the slug by string manipulation in your response.
+If slug is empty after sanitization, use `review`.
+Create `.hydra/` dir and `.hydra/.gitignore` with `*` on first run (`mkdir -p .hydra/reports`).
 
 Omit sections for advisors/reviewers that didn't participate in this mode (don't list
 them as timeout). For actual timeouts: mark as `[TIMEOUT — no response]`.
@@ -274,3 +317,7 @@ Previous: `{{PREV_REPORT}}`
 | Codex task fails | Skip advisor, count toward minimum. Check `$HYDRA_TMP/stderr-*.txt` for diagnostics. |
 | Report write fails | Dump full report inline in conversation as fallback. |
 | Secrets in context | Auto-redact, show locations, ask user before proceeding. |
+| Both Codex advisors fail | Auto-switch to `--no-codex` for reviewers. `[Hydra] Both Codex advisors failed. Switching to Opus-only.` |
+| Malformed advisor response | Treat as failure (not timeout). Advisor must contain `POSITION:` line + ≥3 substantive lines. |
+| Concurrent Hydra run | Warn if recent `/tmp/hydra-*` dirs exist (< 5 min). Don't block. |
+| Bash timeout race | Internal timer (100s) < Bash tool timeout (150s). 50s buffer ensures trap runs. |
