@@ -88,10 +88,12 @@ relevant step.
    If no previous report exists: warn user, fall back to fresh review.
 
    **Report validation:** If a previous report IS found, verify it contains:
-   - `## Verdict` heading with content below it
-   - `**Top Actions:**` block with at least one numbered item
-   - Timestamp in filename matching `hydra-[0-9]{8}T[0-9]{6}-*.md`
-   If validation fails: `[Hydra] Previous report incomplete — missing: {{FIELDS}}. Running fresh review.`
+   - `**Top Actions:**` block with at least one numbered item (required)
+   - Timestamp in filename matching `hydra-[0-9]{8}T[0-9]{6}-*.md` (required)
+   - `## Verdict` heading with content below it (recommended but not required —
+     chairman-failure reports may lack a verdict but still contain actionable findings)
+   If Top Actions AND timestamp are missing: report is invalid, fall back to fresh review.
+   If only Verdict is missing: proceed with iteration using available data, note degraded context.
 
    **State file (preferred):** If `.hydra/state.json` exists, use it instead of parsing
    the markdown report. Schema: `{version: 1, latest: {report_path, timestamp_unix,
@@ -129,7 +131,7 @@ Hydra: {{AGENT_COUNT}} agents. {{PROVIDER_NOTE}}.
 Estimated: {{TIME}}, {{COST}}.
 
 Alternatives:
-  --mode lite     → 4 agents, ~$1.50-2, ~1 min (3 Opus advisors, no review)
+  --mode lite     → 4 agents, ~$0.50-1.50, ~1 min (3 Opus advisors, no review)
   --no-review     → lean: 7 agents, ~$2, ~1.5 min (no review)
   --no-codex      → private: 10 agents, ~$4, ~2 min (Opus only)
   --no-review --no-codex → stealth: 7 agents, ~$1.50-2, ~1 min (Opus only, no review)
@@ -237,10 +239,11 @@ As each completes: `[Hydra] {{Name}} done ({{M}}/{{N}})`
 After each advisor completes, validate the response structurally:
 - **Valid response** must contain: (a) a `POSITION: APPROVE|CONCERN|REJECT` line,
   (b) at least one advisor-specific finding field OR an explicit "no findings"/"no issues"
-  statement, and (c) at least 3 lines of substantive content (excluding blank lines).
-- If response fails validation and does NOT contain "no findings"/"no issues":
-  treat as invalid (not timeout). Mark as `[INVALID — missing POSITION/fields]` in report.
-- If response is completely empty or ≤2 lines: treat as timeout.
+  statement, and (c) at least 3 lines of substantive content (excluding blank lines), OR the response
+  contains an explicit "no findings"/"no issues" statement (short valid responses are
+  acceptable when the advisor found nothing to report).
+- If response fails ALL of (a), (b), (c): treat as invalid. Mark as `[INVALID — missing POSITION/fields]`.
+- If response is completely empty or ≤2 lines without "no findings": treat as timeout.
 **Timeout: 120 seconds per advisor.**
 
 **Scan Point:** After each advisor completes, run the secrets scan (Step 4 patterns)
@@ -303,6 +306,7 @@ Read `references/report-template.md` for the template. Generate inline (no extra
 
 **Final Scan:** Run secrets scan on the assembled report BEFORE writing to disk.
 If findings: redact and append `> Note: Potential secrets in agent output — auto-redacted.`
+If `--transcript`: apply the same secrets scan to the transcript file before writing.
 
 **Save to:** `.hydra/reports/hydra-YYYYMMDDTHHMMSS-{slug}.md`
 Slug: derive from the first 3-4 words of the title via Bash:
@@ -312,6 +316,24 @@ SLUG=$(echo "first three words" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]
 Run this command; do not generate the slug by string manipulation in your response.
 If slug is empty after sanitization, use `review`.
 Create `.hydra/` dir and `.hydra/.gitignore` with `*` on first run (`mkdir -p .hydra/reports`).
+
+   **Write state file:** After saving the report, write `.hydra/state.json`:
+   ```json
+   {
+     "version": 1,
+     "latest": {
+       "report_path": ".hydra/reports/hydra-{TIMESTAMP}-{SLUG}.md",
+       "timestamp_unix": {UNIX_EPOCH},
+       "top_actions": ["action 1", "action 2", ...],
+       "verdict_lead": "first 2-3 sentences of verdict",
+       "mode": "{PRESET_NAME}",
+       "reviewed_files": ["path/to/file1", ...]
+     }
+   }
+   ```
+   Extract `top_actions` from chairman's SUMMARY BLOCK. Extract `reviewed_files` from
+   file paths mentioned in advisor responses. If state.json write fails: warn, continue
+   (the report is the primary artifact; state.json is an optimization).
 
    **Reviewer Highlights:** Extract the Comparative Analysis (Part 2) from each reviewer.
    Synthesize into the Reviewer Highlights section: strongest/weakest advisor (by reviewer
