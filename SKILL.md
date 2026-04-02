@@ -9,12 +9,9 @@ description: >
   DO NOT USE for: simple code generation, syntax fixes, single-file
   refactors, or factual lookups.
   TRIGGERS: 'hydra', 'hydra this', 'hydra review', 'run hydra',
-  'hydra lite', 'Hydra starten', 'red team this',
-  'tear this apart', 'stress test this', 'roast this code',
-  'what am I missing', 'second opinion', 'blind spots',
-  'check my blind spots', 'is this overengineered', 'sanity check this',
-  'hydra iterate', 'hydra re-review', 'did I fix the issues',
-  'hydra follow-up', 'check my fixes', 'run hydra again'.
+  'hydra lite', 'Hydra starten',
+  'hydra iterate', 'hydra re-review', 'hydra follow-up',
+  'hydra history'.
 ---
 
 # Hydra
@@ -187,6 +184,10 @@ Preamble, then append each advisor's unique section.
 run as Opus agents (same prompts, spawn via Agent tool instead of Codex). All 6
 perspectives are preserved; only cross-model diversity is lost.
 
+   **Stranger context restriction:** For The Stranger, omit CLAUDE.md and project structure
+   from the enriched context. Provide only source code and git diff. This preserves the
+   Stranger's "zero context first-reader" design.
+
 **Opus Advisors:** Spawn via Agent tool with `model: "opus"`.
 
 **Codex Advisors** (full and no-review modes only).
@@ -246,6 +247,10 @@ After each advisor completes, validate the response structurally:
 on the advisor's output. Silent redact — do not discard the response. This prevents
 advisors from reconstructing redacted secrets or hallucinating plausible values.
 
+**Persist advisor outputs:** Write each advisor's response to
+   `$HYDRA_TMP/advisor-{name}.md` immediately after completion. If the session is
+   interrupted before the report, these files can be recovered from the temp directory.
+
 **Codex cascade check:** If both Codex advisors (Stranger + Sentinel) fail or are
 invalid, auto-switch to `--no-codex` for the reviewer phase. Print:
 `[Hydra] Both Codex advisors failed. Switching to Opus-only for reviewers.`
@@ -265,6 +270,7 @@ Read `references/review-protocol.md` for the full protocol.
    - **No-Codex mode:** 3 Opus only (reviewers 1-3)
 
 Print: `[Hydra] Peer review started ({{N}} reviewers)...`
+As each reviewer completes: `[Hydra] Reviewer {{N}} done ({{M}}/{{TOTAL}})`
 **Timeout: 120 seconds per reviewer.**
 
 **Scan Point:** After each reviewer completes, run the secrets scan (Step 4 patterns)
@@ -306,6 +312,11 @@ SLUG=$(echo "first three words" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]
 Run this command; do not generate the slug by string manipulation in your response.
 If slug is empty after sanitization, use `review`.
 Create `.hydra/` dir and `.hydra/.gitignore` with `*` on first run (`mkdir -p .hydra/reports`).
+
+   **Reviewer Highlights:** Extract the Comparative Analysis (Part 2) from each reviewer.
+   Synthesize into the Reviewer Highlights section: strongest/weakest advisor (by reviewer
+   consensus), shared blind spots, devil's advocate highlight. Max 150 words. The orchestrator
+   produces this section — not the chairman. If no reviewers ran, omit the section.
 
 Omit sections for advisors/reviewers that didn't participate in this mode (don't list
 them as timeout). For actual timeouts: mark as `[TIMEOUT — no response]`.
@@ -354,3 +365,17 @@ Previous: `{{PREV_REPORT}}`
 | Malformed advisor response | Treat as failure (not timeout). Advisor must contain `POSITION:` line + ≥3 substantive lines. |
 | Concurrent Hydra run | Warn if recent `/tmp/hydra-*` dirs exist (< 5 min). Don't block. |
 | Bash timeout race | Internal timer (100s) < Bash tool timeout (150s). 50s buffer ensures trap runs. |
+
+---
+
+## History Command
+
+Trigger: `hydra history`. No agents spawned, no cost.
+
+```bash
+ls -1t .hydra/reports/hydra-*.md 2>/dev/null | grep -v transcript | head -20
+```
+
+Present as table: `| # | Date | Title | Report Path |`
+Extract date from filename (`hydra-YYYYMMDDTHHMMSS-slug.md`), title from first H1.
+If no reports: `[Hydra] No reviews found. Run 'hydra this' to start.`
