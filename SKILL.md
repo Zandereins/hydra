@@ -73,9 +73,11 @@ relevant step.
    JWT: `eyJhbG...eyJ` (require header.payload, not just header prefix),
    DB strings: `(mongodb|postgres|mysql|redis)://[^:]+:[^@]+@`,
    Other: `AccountKey=`, `SG\.[a-zA-Z0-9_-]{22}\.`, `.env` contents.
-   Replace matches with `[REDACTED-{HEX6}]` where HEX6 = first 6 chars of HYDRA_BOUNDARY.
-   All redactions use the SAME opaque marker — no type information leaks to agents.
-   Orchestrator keeps internal mapping for user-facing reports only.
+   Replace matches with `[REDACTED]`. Use a plain marker without any session-specific
+   information — do not derive the redaction marker from the boundary token or any other
+   security-critical value. The marker is identical for all redactions in a session.
+   Orchestrator keeps an internal count and mapping (type + location) for the user-facing
+   confirmation only — this mapping is never included in agent prompts.
    If secrets found: show redacted locations and ask user to confirm before proceeding.
 
    **Scan procedure name: `secrets-scan`** — referenced by scan points in Steps 3-6.
@@ -308,11 +310,10 @@ Read `references/report-template.md` for the template. Generate inline (no extra
 **Final scan:** Run secrets-scan on assembled report before disk write. If findings: redact and append note. If --transcript: scan transcript file too.
 
 **Save to:** `.hydra/reports/hydra-YYYYMMDDTHHMMSS-{slug}.md`
-Slug: derive from the first 3-4 words of the title via Bash:
-```bash
-SLUG=$(echo "first three words" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | head -c 40 | sed 's/-$//')
-```
-Run this command; do not generate the slug by string manipulation in your response.
+Slug: generate from the first 3-4 words of the title by string manipulation in your
+response (do NOT pipe user-derived text into Bash — shell injection risk):
+- Lowercase, replace non-alphanumeric with `-`, collapse consecutive `-`, max 40 chars.
+- Example: "Auth Middleware Refactor" → `auth-middleware-refactor`
 If slug is empty after sanitization, use `review`.
 Create `.hydra/` dir and `.hydra/.gitignore` with `*` on first run (`mkdir -p .hydra/reports`).
 
