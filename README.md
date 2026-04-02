@@ -144,7 +144,7 @@ Advisors run in parallel, then 5 peer reviewers cross-examine their work
 | **lean** | `--no-review` | 7 (6 advisors + chairman) | ~$2 |
 | **private** | `--no-codex` | 10 (all Opus) | ~$3-4 |
 | **stealth** | `--no-review --no-codex` | 7 (all Opus, no review) | ~$1-2 |
-| **lite** | `--mode lite` | 4 (Cassandra + Mies + Navigator + chairman) | ~$0.50-1.50 |
+| **lite** | `--mode lite` | 4 (Cassandra + Sentinel + Stranger + chairman) | ~$0.50-1.50 |
 
 Flags combine: `--no-review --no-codex` = stealth (7 agents). `--mode lite` is its own preset (4 agents) — other flags are ignored.
 `--transcript` saves raw agent outputs separately.

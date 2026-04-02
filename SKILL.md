@@ -35,7 +35,7 @@ relevant step.
 | **lean** | `--no-review` | 6 (4 Opus + 2 Codex) | 0 | 1 Opus | 7 |
 | **private** | `--no-codex` | 6 (all Opus) | 3 (Opus only) | 1 Opus | 10 |
 | **stealth** | `--no-review --no-codex` | 6 (all Opus) | 0 | 1 Opus | 7 |
-| **lite** | `--mode lite` | 3 (Cassandra + Mies + Navigator) | 0 | 1 Opus | 4 |
+| **lite** | `--mode lite` | 3 (Cassandra + Sentinel + Stranger) | 0 | 1 Opus | 4 |
 
 **Minimum thresholds** — formula: `ceil(N × 0.6)`, min 2:
 
@@ -128,7 +128,7 @@ relevant step.
    Store the resolved path as `CODEX_SCRIPT_PATH` — hardcode it in Step 3/4 Bash calls
    (shell state does not persist between tool calls).
 8. **Classify question type** (uses final resolved mode from steps 5+7): `CODE_REVIEW` | `ARCHITECTURE_DECISION` | `SECURITY_AUDIT` | `DEBUGGING` | `GENERAL_TECHNICAL`
-   If `SECURITY_AUDIT` and `--mode lite`: warn user — `Lite mode excludes Sentinel (security specialist). Consider full mode or --no-review. Proceed anyway? [Y/n]`
+   If `SECURITY_AUDIT` and `--mode lite`: Sentinel is included. Proceed normally.
 9. **Cost warning + confirmation:**
 
 ```
