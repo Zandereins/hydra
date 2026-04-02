@@ -58,7 +58,7 @@ hydra iterate
 ```
 
 Hydra asks for cost confirmation before running. Auto-detects Codex; falls back to
-Opus-only if unavailable. Iterations default to Lite mode (~$1.50-2) and show a
+Opus-only if unavailable. Iterations default to Lite mode (~$0.50-2) and show a
 delta: what's fixed, what remains, what's new.
 
 **Requirements:** [Claude Code](https://claude.ai/code) (required) |
@@ -92,10 +92,10 @@ Advisors run in parallel, then 5 peer reviewers cross-examine their work
 
 | Mode | Agents | Est. Cost |
 |------|--------|-----------|
-| **Full** *(default)* | 12 (6 advisors + 5 reviewers + chairman) | ~$3-5 |
+| **Full** *(default)* | 12 (6 advisors + 5 reviewers + chairman) | ~$2-3 |
 | `--no-review` | 7 (6 advisors + chairman) | ~$2 |
 | `--no-codex` | 10 (all Opus) | ~$4 |
-| `--mode lite` | 4 (Cassandra + Mies + Navigator + chairman) | ~$1.50-2 |
+| `--mode lite` | 4 (Cassandra + Mies + Navigator + chairman) | ~$0.50-2 |
 
 Flags combine: `--no-review --no-codex` = 7 agents. `--mode lite` implies both.
 `--transcript` saves raw agent outputs separately.
@@ -122,7 +122,7 @@ Hydra reviews aren't one-shot. Fix the issues, then run `hydra iterate` to verif
 ```
 
 Iterations auto-detect the last report, diff only what changed, and default to
-Lite mode. Run as many cycles as needed — each one costs ~$1.50-2.
+Lite mode. Run as many cycles as needed — each one costs ~$0.50-2.
 
 Triggers: `hydra iterate`, `hydra re-review`, `hydra follow-up`, `check my fixes`.
 
@@ -136,6 +136,56 @@ which providers receive your code and asks for confirmation before any agents ru
 
 Without the Codex plugin, Hydra runs all 6 advisors on Opus (10 agents). You still
 get all perspectives — just without cross-model diversity.
+
+---
+
+## When NOT to Use Hydra
+
+Hydra spawns 4-12 parallel agents. Use it for decisions that benefit from multiple
+perspectives — not everything.
+
+**Just ask Claude directly for:** syntax fixes, single-file refactors, code generation,
+factual lookups, style questions, simple bug fixes with obvious root causes.
+
+**Use Hydra for:** architecture decisions with real tradeoffs, security-critical code,
+complex refactoring, pre-merge reviews, "I've been staring at this for hours" situations,
+code where mistakes have high cost (payments, auth, data migration).
+
+**Rule of thumb:** If you can describe the change in one sentence and the approach is
+obvious, you don't need Hydra.
+
+---
+
+## Troubleshooting
+
+**"Codex script not found"** — Hydra auto-switches to Opus-only. All 6 perspectives
+still run. Install the [Codex CLI plugin](https://github.com/openai/codex-plugin-cc)
+for cross-model analysis.
+
+**Advisors timing out** — Default timeout is 120s. Common causes: API rate limits,
+large input (keep under 500 lines), network issues. Try `--mode lite` if persistent.
+
+**"ABORTED: 0/N advisors responded"** — API key or network issue. Verify Claude access
+works outside Hydra.
+
+**Unexpected activation** — Type `n` at the cost confirmation. Hydra always asks before
+spawning agents.
+
+---
+
+## FAQ
+
+**How much does it cost?** Full: ~$2-3. Lite: ~$0.50-0.80. These are API costs charged
+to your accounts. Hydra shows estimates before running.
+
+**Where are reports?** `.hydra/reports/` in your project root (gitignored). Run
+`hydra history` to list past reviews.
+
+**Without Codex?** All 6 advisors run on Opus. Same perspectives, no cross-model signal.
+Use `--no-codex` to keep code Anthropic-only.
+
+**How do iterations work?** Fix issues, run `hydra iterate`. Hydra diffs what changed,
+defaults to Lite (~$0.50-0.80), shows a delta: fixed / remaining / new.
 
 ---
 
