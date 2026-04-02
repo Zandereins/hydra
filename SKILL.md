@@ -243,21 +243,19 @@ no codex-rescue subagent.
 All advisors in parallel. Print: `[Hydra] Advisors spawned ({{N}}). Waiting...`
 As each completes: `[Hydra] {{Name}} done ({{M}}/{{N}})`
 
-After each advisor completes, validate the response structurally:
-- **Valid response** must contain: (a) a `POSITION: APPROVE|CONCERN|REJECT` line,
-  (b) at least one advisor-specific finding field OR an explicit "no findings"/"no issues"
-  statement, and (c) at least 3 lines of substantive content (excluding blank lines), OR the response
-  contains an explicit "no findings"/"no issues" statement (short valid responses are
-  acceptable when the advisor found nothing to report).
-- If response fails ALL of (a), (b), (c): treat as invalid. Mark as `[INVALID — missing POSITION/fields]`.
-- If response is completely empty or ≤2 lines without "no findings": treat as timeout.
-**Timeout: 120 seconds per advisor.**
+After each advisor completes, validate the response:
+- **Valid:** Contains a `POSITION: APPROVE|CONCERN|REJECT` line AND either (1) at least one
+  advisor-specific finding field, or (2) an explicit "no findings"/"no issues" statement.
+- **Invalid:** Missing POSITION line, or has neither findings nor a "no findings" statement.
+  Mark as `[INVALID — missing POSITION/fields]`.
+- **Timeout:** Completely empty or no response within 120 seconds.
 
 **Scan:** Run secrets-scan (Step 0.4) on each advisor output. Silent redact.
 
-**Persist advisor outputs:** Write each advisor's response to
-   `$HYDRA_TMP/advisor-{name}.md` immediately after completion. If the session is
-   interrupted before the report, these files can be recovered from the temp directory.
+**Advisor output caching:** Write each advisor's response to
+   `$HYDRA_TMP/advisor-{name}.md` as a working cache for the current session.
+   Note: the temp directory is cleaned up on session exit (trap). These files
+   are NOT recoverable after the session ends — the report is the permanent artifact.
 
 **Codex cascade check:** If both Codex advisors (Stranger + Sentinel) fail or are
 invalid, auto-switch to `--no-codex` for the reviewer phase. Print:
@@ -384,7 +382,7 @@ Previous: `{{PREV_REPORT}}`
 | Report write fails | Dump full report inline in conversation as fallback. |
 | Secrets in context | Auto-redact, show locations, ask user before proceeding. |
 | Both Codex advisors fail | Auto-switch to `--no-codex` for reviewers. `[Hydra] Both Codex advisors failed. Switching to Opus-only.` |
-| Malformed advisor response | Treat as failure (not timeout). Advisor must contain `POSITION:` line + ≥3 substantive lines. |
+| Malformed advisor response | Treat as failure (not timeout). Missing POSITION line or neither findings nor 'no findings' statement. See Step 3 validation. |
 | Concurrent Hydra run | Warn if recent `/tmp/hydra-*` dirs exist (< 5 min). Don't block. |
 | Bash timeout race | Internal timer (100s) < Bash tool timeout (150s). 50s buffer ensures trap runs. |
 
