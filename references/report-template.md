@@ -6,36 +6,59 @@ Slug = first 3-4 words, kebab-case, `[a-z0-9-]` only, max 40 chars. Fallback: `r
 Create `.hydra/.gitignore` with `*` on first run.
 
 **Status labels:**
-- `responded` — advisor/reviewer completed successfully
-- `timeout` — spawned but did not respond within 120s
-- `not run` — excluded by active mode (e.g., Mies/Navigator/Volta in `--mode lite`)
+- `responded` -- advisor/reviewer completed successfully
+- `timeout` -- spawned but did not respond within 120s
+- `not run` -- excluded by active mode (e.g., Mies/Navigator/Volta in `--mode lite`)
 
-**Mode-aware sections:**
+**Mode-aware section rules:**
 - Keep status table rows for excluded roles as `not run`. Omit their full response sections.
-- Omit `## Peer Reviews` entirely if `--no-review` or `--mode lite`.
-- Omit `### Cross-Model Signals` if running Opus-only (`--no-codex` or `--mode lite`).
-- In `--no-codex` mode or `--mode lite`: replace "Codex" with "Opus" in Model column and section headings.
+- Omit `## Peer Reviews` entirely if no reviewers ran (lean, stealth, lite).
+- Omit `### Cross-Model Signals` if Opus-only.
+- Omit `## Blind Spots` if no reviewers ran (blind spots come from reviewer labels).
+- Omit `## Decision Rationale` if no reviewers ran (chairman without reviewers produces simpler output).
+- In `--no-codex` or lite: replace "Codex" with "Opus" in Model column.
 - Thresholds and mode definitions: see SKILL.md Modes table (single source of truth).
 - If fewer than expected responded, add after the Verdict heading:
-  `> **Note:** Degraded confidence — only {{N}} of {{M}} responded.`
+  `> **Note:** Degraded confidence -- only {{N}} of {{M}} responded.`
 
 ---
 
 ## Report
 
 ```markdown
+---
+hydra_version: "1.0"
+timestamp: "{{TIMESTAMP}}"
+question_type: "{{QUESTION_TYPE}}"
+mode: "{{MODE}}"
+severity_counts: {critical: {{CRITICAL_COUNT}}, serious: {{SERIOUS_COUNT}}, moderate: {{MODERATE_COUNT}}}
+confidence: "{{CONFIDENCE}}"
+top_actions:
+  - id: A1
+    severity: "{{A1_SEVERITY}}"
+    file: "{{A1_FILE}}"
+    lines: "{{A1_LINES}}"
+    effort: "{{A1_EFFORT}}"
+    summary: "{{A1_SUMMARY}}"
+reviewed_files: {{REVIEWED_FILES_LIST}}
+iteration: {{ITERATION_NUMBER}}
+previous_report: {{PREV_REPORT_PATH_OR_NULL}}
+---
+
 # Hydra Report: {{TITLE}}
 
 > {{TIMESTAMP}} | {{QUESTION_TYPE}}
 
-| Role | Model | Status |
-|------|-------|--------|
-| Cassandra | Opus | {{responded/timeout}} |
-| Mies | Opus | {{responded/timeout}} |
-| Navigator | Opus | {{responded/timeout}} |
-| The Stranger | Codex | {{responded/timeout/not run}} |
-| Volta | Opus | {{responded/timeout}} |
-| Sentinel | Codex | {{responded/timeout/not run}} |
+| Role | Model | Status | Position |
+|------|-------|--------|----------|
+| Cassandra | Opus | {{responded/timeout}} | {{APPROVE/CONCERN/REJECT/N/A}} |
+| Mies | Opus | {{responded/timeout}} | {{position}} |
+| Navigator | Opus | {{responded/timeout}} | {{position}} |
+| The Stranger | {{Model}} | {{responded/timeout/not run}} | {{position}} |
+| Volta | Opus | {{responded/timeout}} | {{position}} |
+| Sentinel | {{Model}} | {{responded/timeout/not run}} | {{position}} |
+
+**Navigation:** [Verdict](#verdict) | [Actions](#actions) | [Consensus](#consensus-map) | [Advisors](#full-advisor-responses) | [Reviews](#peer-reviews)
 
 ---
 
@@ -45,17 +68,45 @@ Create `.hydra/.gitignore` with `*` on first run.
 
 ---
 
+## Actions
+
+Priority order -- fix in sequence when dependencies exist:
+
+### A1 -- {{SEVERITY}} -- {{FILE}}:{{LINES}} -- Est: {{EFFORT}}
+
+**What:** {{DESCRIPTION}}
+**Why:** {{RATIONALE}}
+**How:** {{CONCRETE_FIX_OR_DIFF}}
+**Dependency:** {{BLOCKS_NOTE_OR_NONE}}
+**Verified by:** {{ADVISOR_NAMES}}
+
+[Repeat for each Top Action]
+
+---
+
 ## Consensus Map
 
-| Advisor (Model) | Position | Key Finding |
-|-----------------|----------|-------------|
+| Advisor (Model) | Position | Key Finding | Evidence | Agrees With |
+|-----------------|----------|-------------|----------|-------------|
 {{CHAIRMAN_CONSENSUS_MAP}}
-<!-- Orchestrator: extract the Consensus Map table from the chairman's output
-     (produced per CONSENSUS MAP rule). The chairman owns position overrides and findings. -->
+
+Legend: Evidence = count of [VERIFIED] findings. Agrees With = advisor(s) who found the same issue.
 
 ### Cross-Model Signals
 
-{{Where Opus and Codex diverged or converged — highest-value insights}}
+{{Where Opus and Codex diverged or converged -- highest-value insights}}
+
+---
+
+## Decision Rationale
+
+{{CHAIRMAN_DECISION_RATIONALE}}
+
+---
+
+## Blind Spots
+
+{{Gaps identified by reviewers: [SHARED BLIND SPOT] labels, [CRITICAL MISS] labels, areas no advisor examined}}
 
 ---
 
@@ -73,96 +124,92 @@ Create `.hydra/.gitignore` with `*` on first run.
 
 ## Full Advisor Responses
 
-### Cassandra — Failure Archaeologist (Opus)
+### Cassandra -- Failure Archaeologist (Opus)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
-### Mies — Reductionist (Opus)
+### Mies -- Reductionist (Opus)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
-### Navigator — Systems Cartographer (Opus)
+### Navigator -- Systems Cartographer (Opus)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
-### The Stranger — Adversarial First-Reader (Codex)
+### The Stranger -- Adversarial First-Reader (Codex)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
-### Volta — Efficiency Surgeon (Opus)
+### Volta -- Efficiency Surgeon (Opus)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
-### Sentinel — Adversarial Security (Codex)
+### Sentinel -- Adversarial Security (Codex)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
 ---
 
 ## Peer Reviews
 
-### Reviewer 1 — Technical Correctness (Opus)
+### Reviewer 1 -- Cross-Examiner (Opus)
 {{FULL_REVIEW or [TIMEOUT]}}
 
-### Reviewer 2 — Implementation Critic (Opus)
+### Reviewer 2 -- Effort-Risk Ranker (Opus)
 {{FULL_REVIEW or [TIMEOUT]}}
 
-### Reviewer 3 — Scope & Risk (Opus)
-{{FULL_REVIEW or [TIMEOUT]}}
-
-### Reviewer 4 — Assumption Excavator (Codex)
-{{FULL_REVIEW or [TIMEOUT]}}
-
-### Reviewer 5 — Devil's Advocate (Codex)
+### Reviewer 3 -- Devil's Advocate (Opus)
 {{FULL_REVIEW or [TIMEOUT]}}
 
 ---
 
-*Hydra v1.0 | Based on Karpathy's LLM Council methodology | MIT License*
+*Hydra | Based on Karpathy's LLM Council methodology | MIT License*
 ```
 
 ---
 
-## In-Conversation Summary (max 25 lines)
+## In-Conversation Summary
 
 Map question type to signal line:
-- CODE_REVIEW → `**{{one-sentence quality assessment from chairman}}**`
-- ARCHITECTURE_DECISION / DEBUGGING / GENERAL_TECHNICAL → **Confidence: {{level}}**
-- SECURITY_AUDIT → **Risk Level: {{level}}**
+- CODE_REVIEW -> severity counts + one-sentence quality assessment
+- ARCHITECTURE_DECISION -> CONFIDENCE level
+- SECURITY_AUDIT -> RISK LEVEL
+- DEBUGGING -> ROOT-CAUSE CONFIDENCE
 
 ```
-## Hydra Verdict: {{TITLE}}
+## Hydra: {{TITLE}}
 
-**{{SIGNAL_LINE}}**
+SEVERITY   CRITICAL [{{N}}]  SERIOUS [{{N}}]  MODERATE [{{N}}]
+CONFIDENCE {{LEVEL}} -- {{N}}/{{M}} advisors -- {{cross-model|opus-only}}
+VERDICT    {{ONE sentence from chairman. Active voice. No hedging.}}
 
-{{VERDICT_LEAD}}
-<!-- Orchestrator: extract 2-3 sentences from chairman verdict lead —
-     Summary (code review), Recommendation (arch), Risk Level (security), or Answer (debug). -->
+--- ACTION REQUIRED ---
+1. [{{SEVERITY}}] {{file:line}} -- {{what + why}}. Est: {{effort}}.
+2. [{{SEVERITY}}] {{file:line}} -- {{what + why}}. Est: {{effort}}.
+3. [{{SEVERITY}}] {{file:line}} -- {{what + why}}. Est: {{effort}}.
+--- END ACTIONS ---
 
-**Top Actions:**
-1. {{action with file/function reference}}
-2. {{action}}
-3. {{action}}
-
-**Key Tensions:**
-- {{disagreement — note if cross-model}}
+TENSION  {{Advisor vs Advisor -> Reason -> Ruling}}
+INSIGHT  {{Non-obvious compound finding from chairman. 1-2 sentences.}}
 
 Full report: `.hydra/reports/hydra-{{TIMESTAMP}}-{{SLUG}}.md`
 ```
 
 ---
 
-## In-Conversation Summary — Iteration Mode (if `HYDRA_ITERATE`)
+## In-Conversation Summary -- Iteration Mode (if `HYDRA_ITERATE`)
 
 Use the chairman's DELTA BLOCK instead of the standard summary:
 
 ```
-## Hydra Delta: {{TITLE}}
+## Hydra Delta: {{TITLE}} (Iteration {{N}})
 
-**Progress: {{X}}/{{Y}} previous actions addressed**
+PROGRESS  {{X}}/{{Y}} previous actions addressed
+TREND     {{Improving/Stable/Degrading}} -- CRITICAL: {{prev}} -> {{now}}, SERIOUS: {{prev}} -> {{now}}
 
-**Fixed:** {{resolved actions from previous Top Actions}}
-**Remaining:** {{unresolved actions}}
-**New Issues:** {{findings not in previous review, if any}}
+FIXED     {{resolved actions with evidence}}
+REMAINING {{unresolved actions -- why?}}
+REGRESSION {{things that WERE working and now aren't}}
+NEW       {{findings not in previous review}}
 
-**Next Step:** {{ONE action}}
+NEXT STEP  {{ONE action}}
 
 Full report: `.hydra/reports/hydra-{{TIMESTAMP}}-{{SLUG}}.md`
-Previous: `{{PREV_REPORT}}`
+Previous:    `{{PREV_REPORT}}`
 ```
 
 ---
