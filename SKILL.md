@@ -9,19 +9,21 @@ description: >
   DO NOT USE for: simple code generation, syntax fixes, single-file
   refactors, or factual lookups.
   TRIGGERS: 'hydra', 'hydra this', 'hydra review', 'run hydra',
-  'hydra lite', 'hydra quick', 'hydra deep', 'Hydra starten',
+  'hydra deep', 'Hydra starten',
   'hydra iterate', 'hydra re-review', 'hydra follow-up',
   'hydra history', 'hydra pr', 'hydra branch',
-  'hydra ?', 'hydra auto', 'fix #'.
+  'hydra ?', 'hydra auto', 'fix #', 'verify',
+  'hydra explain', 'hydra details', 'hydra tensions', 'hydra blind-spots'.
 ---
 
 # Hydra
 
-Six independent advisors analyze your code from fundamentally different angles. Three
-reviewers cross-examine their work. A chairman synthesizes a final verdict.
+Three advisors analyze your code from different angles by default (standard mode).
+Escalate to deep mode for the full council: six advisors, three cross-examining
+reviewers, and a chairman synthesizing the final verdict.
 
-Four advisors run on Claude Opus. Two run on Codex GPT-5.4 -- different model, different
-training data, different blind spots. All three reviewers run on Opus.
+Standard mode runs 3 advisors + chairman on Opus (~$0.25-0.50). Deep mode adds 3 more
+advisors (including 2 Codex), 3 reviewers, and cross-model diversity (~$1.50-2.50).
 
 Reference files in `references/` define all prompts and protocols -- read them at the
 relevant step.
@@ -30,39 +32,36 @@ relevant step.
 
 ## Modes
 
-| Preset | CLI | Aliases | Advisors | Reviewers | Chairman | Total |
-|--------|-----|---------|----------|-----------|----------|-------|
-| **full** | *(default)* | `deep`, `--mode deep` | 6 (4 Opus + 2 Codex) | 3 (all Opus) | 1 Opus | 10 |
-| **lean** | `--no-review` | `broad`, `--mode broad` | 6 (4 Opus + 2 Codex) | 0 | 1 Opus | 7 |
-| **private** | `--no-codex` | `secure`, `--mode secure` | 6 (all Opus) | 3 (all Opus) | 1 Opus | 10 |
-| **stealth** | `--no-review --no-codex` | `focused`, `--mode focused` | 6 (all Opus) | 0 | 1 Opus | 7 |
-| **lite** | `--mode lite` | `quick`, `--mode quick` | 3 (Cassandra + Stranger Codex/Opus + Sentinel Codex/Opus) | 0 | 1 Opus | 4 |
+| Mode | CLI | Advisors | Reviewers | Chairman | Total | Est. Cost |
+|------|-----|----------|-----------|----------|-------|-----------|
+| **standard** | *(default)* | 3 (Cassandra + Stranger + Sentinel) | 0 | 1 Opus | 4 | ~$0.25-0.50 |
+| **deep** | `--mode deep` | 6 (4 Opus + 2 Codex) | 3 (all Opus) | 1 Opus | 10 | ~$1.50-2.50 |
+
+Modifiers (combinable):
+- `--no-codex` -- Codex advisors run on Opus instead. Works on both modes.
+- `--no-review` -- Skip peer review phase. Only meaningful with deep (reduces to 7 agents, ~$1.00).
 
 **Minimum thresholds** -- formula: `ceil(N * 0.6)`, min 2:
 
-| Preset | Min Advisors | Min Reviewers |
-|--------|-------------|---------------|
-| full | 4 of 6 | 2 of 3 |
-| lean | 4 of 6 | -- |
-| private | 4 of 6 | 2 of 3 |
-| stealth | 4 of 6 | -- |
-| lite | 2 of 3 | -- |
+| Mode | Min Advisors | Min Reviewers |
+|------|-------------|---------------|
+| standard | 2 of 3 | -- |
+| deep | 4 of 6 | 2 of 3 (if reviewers active) |
 
-**Mode resolution:** Flags resolve to presets deterministically:
-- `--no-review` alone -> **lean**
-- `--no-codex` alone -> **private**
-- `--no-review --no-codex` -> **stealth**
-- `--mode lite` or `--mode quick` -> **lite** (ignores other flags with warning)
-- `--mode deep` -> **full**
-- `--mode broad` -> **lean**
-- `--mode secure` -> **private**
-- `--mode focused` -> **stealth**
-- No flags -> **full**
+**Mode resolution:** Two modes + modifiers:
+- No flags -> **standard**
+- `--mode deep` -> **deep**
+- `--no-codex` -> modifier (Codex advisors run on Opus)
+- `--no-review` -> modifier (skip peer review; only meaningful with deep)
 
-**Focus modes** (combinable with any preset): `--focus security | perf | readability | architecture | reliability`
+Legacy aliases (emit migration hint):
+- `--mode lite`, `--mode quick`, `--mode full`, `--mode broad`, `--mode secure`, `--mode focused` -> `[Hydra] Unknown mode. Use 'standard' (default) or '--mode deep'.`
+
+**Focus modes** (combinable with any mode): `--focus security | perf | readability | architecture | reliability`
 When a focus flag is active, the primary advisor for that focus gets 2x word budget.
 The chairman receives a focus directive weighting that advisor's findings at 1.5x.
 Focus mapping: security -> Sentinel, perf -> Volta, readability -> Stranger, architecture -> Navigator, reliability -> Cassandra.
+Note: focus flags for Volta, Navigator, or Mies auto-escalate to deep mode when used with standard (these advisors only exist in deep mode). Mies has no focus mapping but is included in deep mode by default.
 
 ---
 
@@ -101,7 +100,7 @@ Focus mapping: security -> Sentinel, perf -> Volta, readability -> Stranger, arc
    ```
    If trigger is an iterate-trigger (`hydra iterate`, `re-review`, `check my fixes`, etc.)
    AND a previous report exists: set `HYDRA_ITERATE=true`, extract Top Actions + Verdict
-   lead + timestamp from the report. Default to `--mode lite` unless user passes `--mode full`.
+   lead + timestamp from the report. Default to standard mode unless user passes `--mode deep`.
    Print: `[Hydra] Iterating on: {{PREV_REPORT}} ({{AGE}} ago)`
    If no previous report exists: warn user, fall back to fresh review.
 
@@ -155,8 +154,8 @@ Focus mapping: security -> Sentinel, perf -> Volta, readability -> Stranger, arc
    increment. If `CODEX_FAILURES >= 2`: set `CODEX_CIRCUIT_OPEN=true`, skip all remaining Codex
    calls, switch to Opus for remaining agents. Print: `[Hydra] Codex circuit breaker open after
    {{N}} consecutive failures. Remaining agents run on Opus.`
-8. **Classify question type** (uses final resolved mode from steps 5+7): `CODE_REVIEW` | `ARCHITECTURE_DECISION` | `SECURITY_AUDIT` | `DEBUGGING` | `GENERAL_TECHNICAL`
-   If `SECURITY_AUDIT` and `--mode lite`: Sentinel is included. Proceed normally.
+8. **Classify question type** (uses final resolved mode from steps 0.5 + 0.7): `CODE_REVIEW` | `ARCHITECTURE_DECISION` | `SECURITY_AUDIT` | `DEBUGGING` | `GENERAL_TECHNICAL`
+   If `SECURITY_AUDIT` and standard mode: Sentinel is included. Proceed normally.
 9. **Determine input complexity** for dynamic word limits:
    ```
    INPUT_SIZE = count lines of source code provided
@@ -180,12 +179,12 @@ Chairman: 1 Opus
 Estimated: {{TIME}}, {{COST}}.
 
 Alternatives:
-  --mode quick     -> 4 agents, ~$0.25-0.50, ~1 min
-  --no-review      -> broad: 7 agents, ~$1.00, ~1.5 min
-  --no-codex       -> secure: 10 agents, ~$1.50, ~2 min
-  --no-review --no-codex -> focused: 7 agents, ~$0.75, ~1 min
+  {{IF standard}} --mode deep -> 10 agents, ~$1.50-2.50, ~2 min (escalate)
+  {{IF deep}} (no flags) -> standard: 4 agents, ~$0.25-0.50, ~1 min (reduce)
+  --no-codex       -> Codex advisors run on Opus instead
+  --no-review      -> skip peer review (deep only, reduces to 7 agents)
 
-Proceed? [Y/n/quick]
+Proceed? [Y/n/{{IF standard}}deep{{ELSE}}standard{{ENDIF}}]
 ```
 
 Provider note: Codex modes -> `Code sent to Claude (Anthropic) + Codex (OpenAI). Use --no-codex to keep code Anthropic-only.`
@@ -249,14 +248,26 @@ Preamble, then append each advisor's unique section.
 | Volta | Y | Y | | | Y |
 | Sentinel | Y | Y | | | |
 
-**Which advisors** -- see Modes table above. In private/stealth mode, Stranger and Sentinel
-run as Opus agents (same prompts, spawn via Agent tool instead of Codex). All 6
-perspectives are preserved; only cross-model diversity is lost.
+**Which advisors** -- see Modes table above. In standard mode: Cassandra, Stranger, Sentinel (3 advisors).
+In deep mode: all 6 advisors. With `--no-codex`, Stranger and Sentinel run as Opus agents
+(same prompts, spawn via Agent tool instead of Codex). All perspectives are preserved;
+only cross-model diversity is lost.
 
 **Opus Advisors:** Spawn via Agent tool with `model: "opus"`.
 
-**Codex Advisors** (full and lean modes only -- skip if `CODEX_CIRCUIT_OPEN`).
+**Codex Advisors** (deep mode only -- skip if `--no-codex` or `CODEX_CIRCUIT_OPEN`).
 
+**Standard mode dispatch:**
+```
+Batch 1 (dispatch all simultaneously):
+  - Agent tool: Cassandra (Opus)
+  - Agent tool: Stranger (Opus or Codex depending on --no-codex)
+  - Agent tool: Sentinel (Opus or Codex depending on --no-codex)
+```
+If Codex is active: Stranger and Sentinel run sequentially via Codex (see below).
+If --no-codex or standard mode without Codex plugin: all 3 run as Opus Agent calls in parallel.
+
+**Deep mode dispatch:**
 **IMPORTANT: Codex tasks run SEQUENTIALLY** (codex-companion allows only one active task
 per workspace). Launch the first Codex task in the SAME batch as the 4 Opus Agent calls:
 
@@ -269,7 +280,12 @@ Batch 1 (dispatch all simultaneously):
   - Bash tool: Codex Stranger (see below)
 
 After Stranger Bash returns:
-  - Bash tool: Codex Sentinel (see below)
+  If Stranger TIMED OUT (exit 124):
+    - Spawn Sentinel as Opus via Agent tool (skip sequential Codex slot).
+      Increment CODEX_FAILURES. Use same Sentinel prompt, route through Agent tool
+      with `model: "opus"`. Set {{SENTINEL_MODEL}} = "Opus".
+  Else:
+    - Bash tool: Codex Sentinel (see below)
 ```
 
 **Codex invocation per advisor** (each is a separate Bash tool call):
@@ -281,7 +297,7 @@ HYDRA_TMP=$(mktemp -d "${TMPDIR:-/tmp}/hydra-XXXXXX") && chmod 700 "$HYDRA_TMP" 
 
 Write prompt files via Write tool to `$HYDRA_TMP/prompt-stranger.md` and `$HYDRA_TMP/prompt-sentinel.md`.
 
-Then for each Codex advisor (one Bash call per advisor, set Bash tool timeout to 120000ms):
+Then for each Codex advisor (one Bash call per advisor, set Bash tool timeout to 90000ms):
 
 ```bash
 HYDRA_TMP="{{HYDRA_TMP_PATH}}"
@@ -289,11 +305,11 @@ CODEX="{{CODEX_SCRIPT_PATH}}"
 
 # Timeout: gtimeout (brew coreutils) > timeout (linux) > perl fallback
 if command -v gtimeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="gtimeout 90"
+  TIMEOUT_CMD="gtimeout 60"
 elif command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="timeout 90"
+  TIMEOUT_CMD="timeout 60"
 else
-  TIMEOUT_CMD="perl -e 'alarm(90); exec @ARGV' --"
+  TIMEOUT_CMD="perl -e 'alarm(60); exec @ARGV' --"
 fi
 
 $TIMEOUT_CMD node "$CODEX" task \
@@ -358,7 +374,7 @@ After each advisor completes, validate the response:
 
 ### Step 4: Peer Review (parallel)
 
-**Skip entirely** if mode has no review phase (lean, stealth, lite).
+**Skip entirely** if mode has no review phase (standard, or deep --no-review).
 
 Read `references/review-protocol.md` for the full protocol.
 
@@ -372,27 +388,72 @@ As each reviewer completes: `[Hydra] Reviewer {{N}} done ({{M}}/3)`
 
 **Scan:** Run secrets-scan on each reviewer output. Silent redact.
 
-### Step 5: Chairman Synthesis
+### Step 5: Verdict Synthesis (dual-path)
 
-Read `references/chairman-protocol.md` for the protocol and verdict formats.
+Read `references/chairman-protocol.md` for verdict formats and the focused chairman prompt.
 
-Spawn 1 Opus agent. Adapt the chairman prompt per the MODE ADAPTATION rules in `references/chairman-protocol.md`.
-Use `HYDRA_BOUNDARY_C` (chairman-stage token) for advisor/reviewer delimiters in chairman prompt.
+**Orchestrator pre-computation (PANEL SUMMARY):**
+Before choosing a verdict path, compute from advisor/reviewer outputs:
 
-**Chairman input optimization:** Send only the `[SECTION:source_code]` portion of the
-enriched context to the chairman (not CLAUDE.md, project structure, or config). The chairman
-needs source code for SELF-VERIFY DISPUTES (checking code facts when advisors disagree),
-but does not need project metadata. This reduces chairman input by ~50% while preserving
-dispute resolution capability.
+1. **Position tally:** Count APPROVE/CONCERN/REJECT. Set `{{AGREE_COUNT}}` = most common count.
+2. **Cross-model matches:** Opus finding + Codex finding on same file + issue class. Set `{{CROSS_MODEL_COUNT}}`. Opus-only: 0.
+3. **Verified count:** Count all `[VERIFIED]` labels. Set `{{VERIFIED_COUNT}}`.
+4. **Signal line:** CODE_REVIEW→"quality assessment", ARCHITECTURE_DECISION→"confidence level",
+   SECURITY_AUDIT→"risk level", DEBUGGING/GENERAL_TECHNICAL→"root-cause confidence".
+5. **Coverage gaps:** Findings missing file path refs → collect as finding ID + advisor name.
+6. **Reviewer label summary** (skip if no reviewers): Count [CORROBORATED], [CONTRADICTED],
+   [CRITICAL MISS], [SHARED BLIND SPOT]. For [CONTRADICTED] include conflicting IDs.
+7. **Severity scan:** Collect SERIOUS/CATASTROPHIC findings. Set `HAS_SERIOUS_PLUS`.
+8. **Evidence chains:** Extract CHAIN lines from each finding for dedup and verify.
 
-**Advisor output compression for chairman:** For each advisor output, extract and send:
-- The POSITION line
-- All severity-labeled findings with their IDs and titles
-- All `[VERIFIED]/[HYPOTHESIS]` labels
-- File/line references
-- First sentence of each finding's lead field
-The full advisor outputs remain in the report (Step 6). Chairman receives compressed
-versions (~600 tokens each instead of ~2000) for faster, more focused synthesis.
+**Consensus Map construction (orchestrator-owned):**
+Build from advisor POSITION lines:
+- For each advisor: Position + key finding (first finding title, max 60 chars)
+- Override: APPROVE + SERIOUS findings → CONCERN with note
+- Timeout → "N/A" / "[TIMEOUT]"
+
+**Confidence pre-computation** (mode-aware thresholds):
+- Standard (3 advisors): HIGH = unanimous (3/3) OR `{{VERIFIED_COUNT}}` >= 3. MEDIUM = 2/3 agree. LOW = split.
+- Deep (6 advisors): HIGH = `{{AGREE_COUNT}}` >= 4 OR `{{CROSS_MODEL_COUNT}}` >= 2 OR `{{VERIFIED_COUNT}}` >= 3. MEDIUM = 2-3 agree, mixed. LOW = split, mostly [HYPOTHESIS], or degraded.
+
+**Path decision tree:**
+```
+HAS_REJECT       = any POSITION == REJECT
+HAS_MIXED        = positions contain both APPROVE and CONCERN
+HAS_CONTRADICTED = [CONTRADICTED] count > 0
+HAS_SERIOUS_PLUS = any finding severity >= SERIOUS
+IS_ARCHITECTURE  = QUESTION_TYPE == ARCHITECTURE_DECISION
+
+IF ANY true -> FOCUSED CHAIRMAN PATH (LLM)
+IF ALL false -> DETERMINISTIC PATH (no LLM call)
+```
+Print: `[Hydra] Verdict path: {{deterministic|focused chairman}} ({{reason}}).`
+
+**--- DETERMINISTIC PATH ---**
+No chairman agent spawned. Orchestrator assembles verdict from pre-computed data:
+1. Verdict position from unanimous tally (APPROVE or CONCERN).
+2. Findings ordered by Reviewer 2's Effort-Risk Ranking (if available) or severity desc.
+3. Summary block: Top Actions from ranking, Key Tensions = "None", Insight = omit.
+4. Decision rationale: "Unanimous {{POSITION}}, {{N}} advisors, no disputes."
+5. If `HYDRA_ITERATE`: DELTA BLOCK assembled mechanically (match findings vs previous top_actions).
+
+**--- FOCUSED CHAIRMAN PATH ---**
+Spawn 1 Opus agent with focused chairman prompt from `references/chairman-protocol.md`.
+Use `HYDRA_BOUNDARY_C` for delimiters. Adapt per MODE ADAPTATION rules.
+
+**Chairman input optimization:** Send only `[SECTION:source_code]` (not CLAUDE.md/config).
+**Advisor output compression:** Extract POSITION + findings + evidence chains + labels (~600 tokens each).
+
+Pre-computed injections before RULES:
+- `CONFIDENCE: {{level + basis}}`
+- `CROSS-MODEL MATCHES: {{list or "None"}}`
+- `EFFORT-RISK RANKING: {{from Reviewer 2}}`
+- `DISPUTES: {{[CONTRADICTED] findings with both positions}}`
+- `SERIOUS+ FINDINGS: {{list with attribution}}`
+- `COVERAGE GAPS: {{findings missing file refs}}`
+
+Chairman focuses on: dispute resolution, synthesis of SERIOUS+ findings, Verify block.
+Orchestrator handles: Consensus Map, confidence counts, signal line, formatting.
 
 If `HYDRA_ITERATE`: append to the chairman prompt before RULES:
 
@@ -410,6 +471,14 @@ After the verdict, produce a DELTA BLOCK (outside word limit, max 200 words):
 ```
 
 **Scan:** Run secrets-scan on chairman output. Silent redact.
+
+**Chairman retry:** The chairman is the single most critical agent -- its failure loses the
+entire synthesis. If the chairman call fails with a retryable error (timeout, 429, 500/502/503):
+1. Apply backoff with jitter (same strategy as advisor retries).
+2. Retry once: `[Hydra] Chairman failed ({{ERROR_TYPE}}), retrying in {{DELAY}}s (1/1)...`
+3. If retry also fails: fall back to degraded path (generate report without verdict,
+   include Consensus Map + raw advisor outputs).
+Max 1 retry. Non-retryable errors (401/403, 400, content policy) skip straight to degraded path.
 
 ### Step 6: Generate Report
 
@@ -471,11 +540,15 @@ chmod 600 .hydra/state.json
    ```
    Create `.hydra/audit.log` with `chmod 600` on first run. Append-only.
 
-   **Report integrity:** After assembling report, compute checksum:
+   **Report integrity:** Compute checksum on the assembled report body BEFORE prepending
+   the integrity line (otherwise prepending changes the file and invalidates the hash):
    ```bash
    CHECKSUM=$(shasum -a 256 "$REPORT_PATH" | cut -d' ' -f1)
+   # Prepend integrity line (checksum covers everything BELOW this line)
+   { echo "<!-- hydra-integrity: sha256:${CHECKSUM} session:HYDRA-${HYDRA_BASE} scope:body -->"; cat "$REPORT_PATH"; } > "${REPORT_PATH}.tmp" && mv "${REPORT_PATH}.tmp" "$REPORT_PATH"
    ```
-   Prepend integrity line to report: `<!-- hydra-integrity: sha256:{{CHECKSUM}} session:HYDRA-{{BASE}} -->`
+   If `shasum` is unavailable: `openssl dgst -sha256 "$REPORT_PATH" | awk '{print $NF}'`.
+   If both fail: skip integrity line (non-critical for local gitignored reports).
 
 Omit sections for advisors/reviewers that didn't participate in this mode (don't list
 them as timeout). For actual timeouts: mark as `[TIMEOUT -- no response]`.
@@ -486,22 +559,61 @@ If `--transcript`: save raw agent outputs to separate file (see report-template.
 
 ### Step 7: Present Results
 
-Present in-conversation summary (max 25 lines) using the chairman's SUMMARY BLOCK,
-formatted per `references/report-template.md` v2 format.
+**Progressive disclosure (3 tiers):**
 
-If `HYDRA_ITERATE`, use the chairman's DELTA BLOCK instead (see report-template.md iteration format).
+**Tier 1 (always shown, ~10 lines):**
+```
+## Hydra: {{TITLE}}
 
-**Post-review actions:** After presenting the verdict, append:
+VERDICT    {{ONE sentence from chairman/deterministic verdict}}
+ACTIONS    {{N}} findings: {{CRITICAL_N}} critical, {{SERIOUS_N}} serious, {{MODERATE_N}} moderate
+  1. [{{SEVERITY}}] {{file:line}} -- {{what}}. Est: {{effort}}.
+  2. [{{SEVERITY}}] {{file:line}} -- {{what}}. Est: {{effort}}.
+  3. [{{SEVERITY}}] {{file:line}} -- {{what}}. Est: {{effort}}.
+
+Full report: {{path}} | "hydra details" for tensions + insight | "hydra explain #N" for deep dive
+```
+
+If `HYDRA_ITERATE`, show the DELTA BLOCK instead (see report-template.md iteration format).
+
+**Tier 2** (`hydra details`): Adds CONFIDENCE, TENSION, INSIGHT, cross-model signals, verify block.
+**Tier 3** (`hydra explain #N`): Full finding detail with evidence chains from all advisors.
+
+**Post-review actions:**
 ```
 --- Next Steps ---
-  fix #N  -> implement Top Action N directly
-  hydra iterate -> re-review after fixes
-  hydra history -> past reviews
+  verify         -> run verification for Top Action #1
+  fix #N         -> implement Top Action N (with preview)
+  hydra explain #N -> deep dive into finding N
+  hydra details  -> show tensions, insight, cross-model signals
+  hydra iterate  -> re-review after fixes
+  hydra history  -> past reviews
 ---
 ```
 
-**`fix #N` trigger:** When user types `fix #1`, read Top Action #1 from `.hydra/state.json`
-and implement the fix directly as a normal Claude Code task. Do NOT spawn Hydra agents.
+**`verify` trigger:** When user types `verify`:
+1. Read the Verify block from the latest report (via state.json or SUMMARY BLOCK).
+2. If Command: show command, ask `Run this? [Y/n]`. On confirm, execute and interpret output.
+3. If Test snippet: offer to create a temporary test file and run.
+4. If Manual check: present steps as a checklist.
+5. Result: `Finding {{confirmed|falsified}}. {{next suggestion}}.`
+
+**`fix #N` trigger:** When user types `fix #1`:
+1. Read Top Action #1 from `.hydra/state.json` (fall back to latest report markdown).
+2. **Preview before applying:** Show the action summary, evidence chain, affected file(s),
+   and proposed approach. Ask: `Apply this fix? [Y/n]`. Do NOT implement until confirmed.
+3. On confirmation: implement as a normal Claude Code task. Do NOT spawn Hydra agents.
+4. After implementation: suggest `hydra iterate` to verify the fix.
+
+**`hydra explain #N` trigger:** Read finding #N from latest report. Show:
+- Full advisor response(s) that raised this finding
+- Evidence chain
+- Reviewer corroboration/contradiction labels
+- Chairman's ruling (if disputed)
+No agents spawned, no cost.
+
+**`hydra tensions` trigger:** Show all Disputed Points from the verdict. No cost.
+**`hydra blind-spots` trigger:** Show Blind Spots + Shared Assumptions from report. No cost.
 
 **Cleanup:** Remove temp directory:
 ```bash
@@ -515,7 +627,7 @@ rm -rf "$HYDRA_TMP" 2>/dev/null
 | Failure | Action |
 |---------|--------|
 | 0 advisors respond | `[Hydra] ABORTED: 0/N advisors responded. Likely API/network issue. Try again.` |
-| Below min advisors | `[Hydra] ABORTED: Only N/M responded (list names). Try: --no-codex or --mode quick` |
+| Below min advisors | `[Hydra] ABORTED: Only N/M responded (list names). Try: --no-codex` |
 | Below min reviewers | Proceed with degraded confidence note in verdict and report. |
 | Chairman fails | Generate report without verdict -- include Consensus Map + raw advisor outputs. |
 | Codex script not found | Auto-switch to `--no-codex`. Note in report. |
@@ -525,11 +637,18 @@ rm -rf "$HYDRA_TMP" 2>/dev/null
 | Secrets in context | Auto-redact, show locations, ask user before proceeding. |
 | Both Codex advisors fail | Auto-switch to Opus-only for reviewers. |
 | Malformed advisor response | DEGRADED if has POSITION, INVALID if not. See Step 3 validation. |
-| Concurrent Hydra run | Warn if recent temp dirs exist (< 5 min). Don't block. |
+| Concurrent Hydra run | Check `ls -1d "${TMPDIR:-/tmp}"/hydra-* 2>/dev/null` for dirs modified < 5 min ago. Warn, don't block. |
 
-**Retry logic:** Max 1 retry per advisor/reviewer (5s backoff). Retryable: timeout, 429, 500/502/503.
-Non-retryable: 401/403, 400, content policy, script-not-found. On retry:
-`[Hydra] {{Name}} failed, retrying (1/1)...`
+**Retry logic:** Max 1 retry per advisor/reviewer. Max 1 retry for chairman.
+Retryable: timeout, 429, 500/502/503. Non-retryable: 401/403, 400, content policy, script-not-found.
+
+**Backoff strategy (with jitter):**
+- **429 (rate limit):** `min(30 * 2^attempt, 120)` seconds. Attempt 0 = 30s, attempt 1 = 60s.
+- **500/502/503/timeout:** 5 seconds base.
+- **Jitter:** All retry delays get ±20% random jitter: `delay * (0.8 + random() * 0.4)`.
+  This prevents thundering herd when multiple agents retry simultaneously.
+
+On retry: `[Hydra] {{Name}} failed ({{ERROR_TYPE}}), retrying in {{DELAY}}s (1/1)...`
 
 ---
 
@@ -563,17 +682,17 @@ Recommendation:   {{MODE}} ({{REASON}})
 Alternatives:
   {{OTHER_MODES_WITH_COSTS}}
 
-Proceed with {{MODE}}? [Y/n/quick/deep]
+Proceed with {{MODE}}? [Y/n/standard/deep]
 ```
 
 Signal taxonomy for auto-selection:
-- Security keywords (auth, JWT, token, password, crypto, SQL) -> deep or secure
-- Code size > 300 lines -> deep or broad
-- Code size < 100 lines + no security signals -> quick
-- HYDRA_ITERATE + diff < 30 lines -> quick
-- Architecture decision (no code, "should I", "vs", "tradeoff") -> broad
+- Security keywords (auth, JWT, token, password, crypto, SQL) -> deep
+- Code size > 300 lines -> deep
+- Code size < 100 lines + no security signals -> standard
+- HYDRA_ITERATE + diff < 30 lines -> standard
+- Architecture decision (no code, "should I", "vs", "tradeoff") -> deep
 - Migration/schema files -> deep
-- Test files only -> quick
+- Test files only -> standard
 
 ---
 
@@ -585,4 +704,4 @@ Trigger: `hydra branch`. Reviews all changes on current branch vs base.
 2. Get diff: `git diff $(git merge-base HEAD main)...HEAD`
 3. Get log: `git log --oneline $(git merge-base HEAD main)..HEAD`
 4. Auto-classify from branch name: `feat/*` -> feature, `fix/*` -> hotfix, `refactor/*` -> refactor
-5. Run standard Hydra with diff as input. Default: quick for <200 lines, lean for 200-500, full for 500+.
+5. Run standard Hydra with diff as input. Default: standard for <300 lines, deep for 300+.
