@@ -25,6 +25,20 @@ FINDING NUMBERING:
 Number each finding as {{YOUR_INITIAL}}-1, {{YOUR_INITIAL}}-2, etc.
 (Cassandra=C, Mies=M, Navigator=N, Stranger=St, Volta=V, Sentinel=Se)
 
+EVIDENCE CHAIN:
+Every finding MUST include an evidence chain as the FIRST line, in this format:
+
+CHAIN: `{{file}}:{{line_range}}` -> `{{code_construct}}` -> `{{assumption}}` -> `{{failure_mode}}` -> `{{impact}}`
+
+- file:line_range = exact location (e.g., `auth/middleware.ts:47-62`)
+- code_construct = the specific code pattern (e.g., `refreshToken() called without mutex`)
+- assumption = what must hold for this code to be correct (e.g., `assumes single concurrent request`)
+- failure_mode = how the assumption breaks (e.g., `concurrent requests both refresh, one overwrites`)
+- impact = user-visible consequence (e.g., `intermittent 401 errors under load`)
+
+All 5 chain links filled with code-referenced content = [VERIFIED].
+Any gap in the chain = [HYPOTHESIS]. The chain is IN ADDITION to your finding format.
+
 MATERIALITY:
 Report only material findings. If fewer than 3 material issues exist, report what you
 find and state "No further findings in scope." If PRIMARILY about another advisor's

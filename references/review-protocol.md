@@ -9,7 +9,7 @@ The orchestrator reads this at Step 4. Reviewers see all advisor responses label
 Label responses A-F (A=Cassandra, B=Mies, C=Navigator, D=Stranger, E=Volta, F=Sentinel).
 All reviewers see the same labels — no permutation needed.
 Preserve original field headings.
-Omit labels for advisors that didn't run (e.g., in `--mode lite`, only A, D, F run).
+Omit labels for advisors that didn't run (e.g., in standard mode, only A, D, F run).
 In `--no-codex` mode, all 6 advisors run on Opus — include all labels A-F.
 
 Wrap each response using the `{{BOUNDARY}}` token from Step 0:
@@ -32,7 +32,7 @@ Prompt assembled per two-pass rule (SKILL.md Step 0.6).
 
 ## Reviewer Assignments
 
-3 Opus reviewers in all modes that include review (full, private).
+3 Opus reviewers in deep mode without --no-review.
 No Codex reviewers. Minimum: 2 of 3.
 
 ### 1: Cross-Examiner (Opus)

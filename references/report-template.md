@@ -8,15 +8,15 @@ Create `.hydra/.gitignore` with `*` on first run.
 **Status labels:**
 - `responded` -- advisor/reviewer completed successfully
 - `timeout` -- spawned but did not respond within 120s
-- `not run` -- excluded by active mode (e.g., Mies/Navigator/Volta in `--mode lite`)
+- `not run` -- excluded by active mode (e.g., Mies/Navigator/Volta in standard mode)
 
 **Mode-aware section rules:**
 - Keep status table rows for excluded roles as `not run`. Omit their full response sections.
-- Omit `## Peer Reviews` entirely if no reviewers ran (lean, stealth, lite).
+- Omit `## Peer Reviews` entirely if no reviewers ran (standard, or deep --no-review).
 - Omit `### Cross-Model Signals` if Opus-only.
 - Omit `## Blind Spots` if no reviewers ran (blind spots come from reviewer labels).
 - Omit `## Decision Rationale` if no reviewers ran (chairman without reviewers produces simpler output).
-- In `--no-codex` or lite: replace "Codex" with "Opus" in Model column.
+- In `--no-codex`: replace "Codex" with "Opus" in Model column.
 - Thresholds and mode definitions: see SKILL.md Modes table (single source of truth).
 - If fewer than expected responded, add after the Verdict heading:
   `> **Note:** Degraded confidence -- only {{N}} of {{M}} responded.`

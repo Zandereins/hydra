@@ -124,7 +124,7 @@ first, then insert advisor/reviewer responses verbatim.
 {{SENTINEL_RESPONSE}}
 --- END ADVISOR [{{BOUNDARY}}] ---
 
-<!-- IF NOT lite (orchestrator: remove this block and its contents in lite mode) -->
+<!-- IF deep (orchestrator: remove this block and its contents in standard mode) -->
 **Mies (Opus):**
 --- ADVISOR [{{BOUNDARY}}] ---
 {{MIES_RESPONSE}}
@@ -148,7 +148,7 @@ VERDICT FORMAT:
 {{VERDICT_FORMAT}}
 
 RULES:
-<!-- IF full OR lean (orchestrator: include cross-model rules only when Codex is active) -->
+<!-- IF NOT --no-codex (orchestrator: include cross-model rules only when Codex is active) -->
 - **CROSS-MODEL SCORING:**
   Cross-model agreement (same issue, different model families) = highest confidence. Label as [CROSS-VALIDATED]. Surface FIRST in verdict regardless of which advisor found it first.
   Cross-model disagreement = ESCALATE. Gets its own paragraph in Disputed Points.
@@ -156,7 +156,7 @@ RULES:
   Single advisor, [VERIFIED] = standard confidence.
   When Opus and Codex independently flag the same code location with the same class of problem: this is the strongest signal Hydra produces.
 <!-- ENDIF -->
-- **SPECIFICITY:** Every finding MUST reference at least one file path and line range. Every fix MUST be a concrete code change (diff, function signature, config value) -- not a description of a change. If advisor responses lack file paths, state that explicitly as a coverage gap.
+- **SPECIFICITY:** Every finding and fix must be concrete (file path, line range, code change). The orchestrator has flagged advisor findings missing file references -- see COVERAGE GAPS in PANEL SUMMARY if present.
 - **EVIDENCE WEIGHT:** Weight by evidence, not advisor count. Label [VERIFIED] or [HYPOTHESIS].
 - **UNANIMOUS CHECK:** If all agree: genuine or shared limitation? Check Devil's Advocate (if available).
 - **SILENCE ANALYSIS:** If ANY advisor reports "no findings" while others found issues: explain why.
@@ -166,23 +166,13 @@ RULES:
   Tier 2 -- EVIDENCE AMBIGUOUS: Both have evidence for different aspects. Apply the REVERSIBILITY test: which option is easier to undo? Recommend the reversible option. State the trigger condition for revisiting.
   Tier 3 -- NEEDS CHECK: Neither side has sufficient evidence AND stakes are HIGH (SERIOUS+). Mark as `**UNRESOLVED -- Needs Check:**` with: exactly what to check (command, test, file inspection), which position wins if check confirms X vs Y, estimated effort (<5min / <30min / >30min).
 - **SELF-VERIFY DISPUTES:** When two advisors disagree about a CODE FACT (does X call Y? Is Z validated?), check the source code in ENRICHED_CONTEXT yourself. Your direct verification overrides both positions. Label as [CHAIRMAN-VERIFIED].
-- **CONFIDENCE:** Express as compound indicator: LEVEL (basis).
-  Format: `HIGH (4/6 agree, 2 cross-model, 3 [VERIFIED])` or `MEDIUM (3/6 agree, mixed evidence)`
-  HIGH: 4+ agree OR 2+ cross-model consensus OR 3+ [VERIFIED]
-  MEDIUM: 2-3 agree, mixed evidence quality
-  LOW: split advisors, mostly [HYPOTHESIS], or degraded panel
+- **CONFIDENCE:** The orchestrator provides pre-computed counts (agreement, cross-model, verified) in PANEL SUMMARY. Use them to express confidence as: LEVEL (basis). HIGH: 4+ agree OR 2+ cross-model OR 3+ [VERIFIED]. MEDIUM: 2-3 agree, mixed. LOW: split, mostly [HYPOTHESIS], or degraded.
 - **REVIEWER LABELS:** Reviewers use structured labels. Prioritize resolution of:
   - [CONTRADICTED] findings (reviewers identified advisor disagreements)
   - [CRITICAL MISS] findings (reviewers identified gaps advisors missed)
   - [SHARED BLIND SPOT] findings (assumptions across 3+ advisors)
   Cross-reference the Effort-Risk Ranking (Reviewer 2) when ordering Top Actions.
-- **CONSENSUS MAP:** After the verdict, produce a CONSENSUS MAP table (outside word limit).
-  Use each advisor's POSITION (APPROVE/CONCERN/REJECT) and key finding (max 60 chars).
-  If an advisor timed out: mark as N/A. If a POSITION contradicts the advisor's own
-  severity ratings (e.g., APPROVE with SERIOUS findings, or APPROVE with 5+ MODERATE),
-  override to CONCERN and note the inconsistency. Format:
-  | Advisor (Model) | Position | Key Finding |
-  |-----------------|----------|-------------|
+- **CONSENSUS MAP:** The orchestrator constructs the Consensus Map from advisor POSITION lines. Do NOT produce one.
 - **NO HEDGING:** No hedging, no "it depends", no meta-commentary.
 - **WORD LIMIT:** Max 1500 words complex (5+ unique findings or any CATASTROPHIC), 1200 standard, 600 simple.
 - **SUMMARY BLOCK:** After the verdict, produce a SUMMARY BLOCK (outside word limit, max 150 words):
@@ -196,6 +186,12 @@ RULES:
   **Signal:** CODE_REVIEW -> quality assessment. ARCHITECTURE -> confidence level.
   SECURITY -> risk level. DEBUGGING -> root-cause confidence.
   **Insight:** [ONE non-obvious compound finding -- where two independently-acceptable conditions produce an unacceptable outcome, or a pattern no single advisor surfaced alone. Max 2 sentences.]
+  **Verify:** [For the #1 Top Action ONLY. Produce ONE of these formats:]
+  - **Command:** `{{shell command that demonstrates the issue}}` (e.g., concurrent curl calls to trigger a race)
+  - **Test snippet:** `{{minimal test that fails if the finding is real}}` (e.g., a Jest/pytest test)
+  - **Manual check:** "Open {{file}}, line {{N}}, observe {{what to look for}}"
+  Rules: must target #1 Top Action, executable in <5 min, binary result (confirmed/falsified).
+  If no meaningful verification possible: `**Verify:** Cannot construct local verification -- {{reason}}.`
 - **DECISION RATIONALE:** After the SUMMARY BLOCK, produce a DECISION RATIONALE (outside word limit, max 100 words):
   **Why this verdict:** [2-3 sentences explaining the REASONING, not restating the conclusion.]
   **What would change my mind:** [Specific condition or evidence that would flip this verdict.]
@@ -228,17 +224,17 @@ MODE ADAPTATION (orchestrator processes template before sending):
 1. **Resolve conditionals:** Strip `<!-- IF ... -->` / `<!-- ENDIF -->` blocks that don't
    match the active preset. Keep content of matching blocks, remove comment markers.
 2. **Set model variables:**
-   - `{{STRANGER_MODEL}}`: "Codex" (full, lean) or "Opus" (private, stealth)
-   - `{{SENTINEL_MODEL}}`: "Codex" (full, lean) or "Opus" (private, stealth)
-   - `{{ADVISOR_COUNT}}`: 6 (full, lean, private, stealth) or 3 (lite)
-   - `{{REVIEWER_COUNT}}`: 3 (full, private) or 0 (lean, stealth, lite)
+   - `{{STRANGER_MODEL}}`: "Codex" (deep without --no-codex) or "Opus" (standard, or --no-codex)
+   - `{{SENTINEL_MODEL}}`: "Codex" (deep without --no-codex) or "Opus" (standard, or --no-codex)
+   - `{{ADVISOR_COUNT}}`: 3 (standard) or 6 (deep)
+   - `{{REVIEWER_COUNT}}`: 0 (standard, or deep --no-review) or 3 (deep)
 3. **Opening line** (first sentence after "You are the Chairman"):
-   - full: "Synthesize 6 advisors (4 Opus + 2 Codex) and 3 reviewers into a final verdict."
-   - lean: "Synthesize 6 advisors (4 Opus + 2 Codex), no reviewers, into a final verdict."
-   - private: "Synthesize 6 advisors (all Opus) and 3 reviewers into a final verdict."
-   - stealth: "Synthesize 6 advisors (all Opus), no reviewers, into a final verdict."
-   - lite: "Synthesize 3 advisors (Opus), no reviewers, into a final verdict."
-4. **Omit sections:** Remove PEER REVIEWS section if no reviewers (lean, stealth, lite).
-   Remove `**Cross-Model Signals:**` from verdict format if Opus-only (private, stealth, lite).
-5. **Lite specifics:** Only include Cassandra/Stranger/Sentinel advisor sections. Consensus Map: 3 rows.
+   - standard: "Synthesize 3 advisors (Opus), no reviewers, into a final verdict."
+   - deep: "Synthesize 6 advisors (4 Opus + 2 Codex) and 3 reviewers into a final verdict."
+   - deep --no-review: "Synthesize 6 advisors (4 Opus + 2 Codex), no reviewers, into a final verdict."
+   - deep --no-codex: "Synthesize 6 advisors (all Opus) and 3 reviewers into a final verdict."
+   - deep --no-review --no-codex: "Synthesize 6 advisors (all Opus), no reviewers, into a final verdict."
+4. **Omit sections:** Remove PEER REVIEWS section if no reviewers (standard, or deep --no-review).
+   Remove `**Cross-Model Signals:**` from verdict format if Opus-only (standard, or --no-codex).
+5. **Standard specifics:** Only include Cassandra/Stranger/Sentinel advisor sections. Consensus Map: 3 rows.
 ```
