@@ -4,12 +4,12 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-D97757)](https://docs.anthropic.com/en/docs/claude-code/skills)
-[![Agents](https://img.shields.io/badge/Agents-10_parallel-blue)](#modes)
+[![Agents](https://img.shields.io/badge/Agents-4_to_10-blue)](#modes)
 
 Three engineers reviewed this code. Hydra caught what they missed -- twice, from two models that never talked to each other.
 
-Six specialists ask six different questions about your code, cross-examine each
-other's answers, and deliver one verdict. Inspired by
+Three advisors review your code by default (standard mode). Escalate to deep mode
+for six specialists, cross-examination, and cross-model diversity. Inspired by
 [Karpathy's LLM Council](https://github.com/karpathy/llm-council) -- same principle
 (independent perspectives, cross-examination, synthesis), adapted for specialist
 code review with cross-model diversity (Claude Opus + OpenAI Codex).
@@ -91,7 +91,7 @@ graph TD
     G -. hydra iterate .-> B
 ```
 
-Six advisors analyze independently -- four on Opus in parallel, two on Codex sequentially (the Codex CLI allows only one active task per workspace, so they run back-to-back but overlap with the Opus advisors). Three reviewers then cross-examine all advisor outputs (the key differentiator: no advisor sees another's work, but every reviewer sees everything). The chairman synthesizes a final verdict. After fixes, `hydra iterate` re-enters the pipeline in Lite mode, producing a delta of what changed.
+In standard mode (default), three advisors analyze independently and a chairman synthesizes a verdict (~$0.25-0.50). In deep mode, six advisors run (four Opus in parallel, two Codex sequentially), then three reviewers cross-examine all outputs (no advisor sees another's work, but every reviewer sees everything), then the chairman synthesizes (~$1.50-2.50). After fixes, `hydra iterate` re-enters the pipeline in standard mode, producing a delta of what changed.
 
 ---
 
@@ -109,7 +109,7 @@ hydra iterate
 ```
 
 Hydra asks for cost confirmation before running. Auto-detects Codex; falls back to
-Opus-only if unavailable. Iterations default to Lite mode (~$0.25-0.50) and show a
+Opus-only if unavailable. Iterations default to standard mode (~$0.25-0.50) and show a
 delta: what's fixed, what remains, what's new.
 
 **Requirements:** [Claude Code](https://claude.ai/code) (required) |
@@ -118,9 +118,10 @@ cross-model analysis, runs sequentially alongside Opus advisors)
 
 ---
 
-## The 6 Advisors
+## The Advisors
 
-Each advisor asks a fundamentally different question. Four run on Claude Opus,
+Standard mode uses 3 advisors (Cassandra, Stranger, Sentinel). Deep mode adds
+Mies, Navigator, and Volta for the full 6. Four run on Claude Opus,
 two on OpenAI Codex -- different model, different blind spots. When Opus and Codex
 independently agree, that's the strongest signal. When they disagree, that's the
 highest-value finding.
@@ -150,16 +151,15 @@ verdict.
 
 ## Modes
 
-| Mode | CLI | Aliases | Agents | Est. Cost |
-|------|-----|---------|--------|-----------|
-| **full** *(default)* | -- | `deep` | 10 (6 advisors + 3 reviewers + chairman) | ~$1.50-2.50 |
-| **lean** | `--no-review` | `broad` | 7 (6 advisors + chairman) | ~$1.00 |
-| **private** | `--no-codex` | `secure` | 10 (all Opus) | ~$1.50-2.00 |
-| **stealth** | `--no-review --no-codex` | `focused` | 7 (all Opus, no review) | ~$0.75-1.00 |
-| **lite** | `--mode lite` | `quick` | 4 (Cassandra + Sentinel + Stranger + chairman) | ~$0.25-0.50 |
+| Mode | CLI | Agents | Est. Cost |
+|------|-----|--------|-----------|
+| **standard** *(default)* | -- | 4 (3 advisors + chairman) | ~$0.25-0.50 |
+| **deep** | `--mode deep` | 10 (6 advisors + 3 reviewers + chairman) | ~$1.50-2.50 |
 
-Flags combine: `--no-review --no-codex` = stealth (7 agents). `--mode lite` is its own preset (4 agents) -- other flags are ignored.
-`--transcript` saves raw agent outputs separately.
+Modifiers (combinable with either mode):
+- `--no-codex` -- Codex advisors run on Opus instead
+- `--no-review` -- Skip peer review (only meaningful with deep, reduces to 7 agents, ~$1.00)
+- `--transcript` -- Save raw agent outputs separately
 
 Costs are for API calls to Claude and Codex -- charged to your own accounts.
 Hydra always shows the estimate and asks before running.
@@ -182,7 +182,7 @@ hydra auto # same
 Give a specific advisor 2x their normal word budget for deeper analysis:
 
 ```
-hydra deep --focus security    # Sentinel gets 2x word budget
+hydra --mode deep --focus security    # Sentinel gets 2x word budget
 hydra --focus perf             # Volta gets 2x word budget
 ```
 
@@ -227,7 +227,7 @@ Hydra reviews aren't one-shot. Fix the issues, then run `hydra iterate` to verif
 ```
 
 Iterations auto-detect the last report, diff only what changed, and default to
-Lite mode. Run as many cycles as needed -- each one costs ~$0.25-0.50.
+standard mode. Run as many cycles as needed -- each one costs ~$0.25-0.50.
 
 Triggers: `hydra iterate`, `hydra re-review`, `hydra follow-up`, `check my fixes`.
 
@@ -235,12 +235,13 @@ Triggers: `hydra iterate`, `hydra re-review`, `hydra follow-up`, `check my fixes
 
 ## Privacy
 
-In full mode, your code is sent to both Anthropic (Claude Opus) and OpenAI
+In both modes, your code is sent to both Anthropic (Claude Opus) and OpenAI
 (Codex GPT-5.4). Use `--no-codex` to keep everything Anthropic-only. Hydra shows
 which providers receive your code and asks for confirmation before any agents run.
 
-Without the Codex plugin, Hydra runs all 6 advisors on Opus (10 agents). You still
-get all perspectives -- just without cross-model diversity.
+Without the Codex plugin, Hydra runs all advisors on Opus. In standard mode that is
+3 advisors + chairman (4 agents). In deep mode, all 6 advisors + 3 reviewers + chairman
+(10 agents). Same perspectives -- just without cross-model diversity.
 
 ---
 
@@ -285,7 +286,7 @@ spawning agents.
 
 ## FAQ
 
-**How much does it cost?** Full: ~$1.50-2.50. Lite: ~$0.25-0.50. These are API costs
+**How much does it cost?** Standard: ~$0.25-0.50. Deep: ~$1.50-2.50. These are API costs
 charged to your accounts. Hydra shows estimates before running.
 
 **Where are reports?** `.hydra/reports/` in your project root (gitignored). Run
@@ -295,13 +296,10 @@ charged to your accounts. Hydra shows estimates before running.
 Same perspectives, no cross-model signal. Use `--no-codex` to keep code Anthropic-only.
 
 **How do iterations work?** Fix issues, run `hydra iterate`. Hydra diffs what changed,
-defaults to Lite (~$0.25-0.50), shows a delta: fixed / remaining / new.
+defaults to standard (~$0.25-0.50), shows a delta: fixed / remaining / new.
 
 **How many reviewers?** 3 reviewers (Cross-Examiner, Effort-Risk Ranker,
 Devil's Advocate), all running on Opus.
-
-**What are the mode aliases?** `deep` = full, `broad` = lean, `secure` = private,
-`focused` = stealth, `quick` = lite. Old names still work.
 
 ---
 
