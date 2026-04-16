@@ -248,7 +248,7 @@ in Step 5.
 **Scope metrics** (computed when `IS_WINDOWED = true`, used by report-template + in-conversation summary):
 - `DIFF_LINES`: count non-header lines in the assembled diff_context
 - `EST_TOTAL_LINES`: sum of `wc -l` for all reviewed files
-- `SCOPE_PCT`: `round(DIFF_LINES / max(EST_TOTAL_LINES, 1) * 100)`
+- `SCOPE_PCT`: integer 0-100. Compute as `min(100, int(round(DIFF_LINES / max(EST_TOTAL_LINES, 1) * 100)))`. The upper clamp handles deleted-only branches where `DIFF_LINES` may exceed `EST_TOTAL_LINES`; the `int()` cast guarantees an integer (never a float like `46.0`) for downstream schema consumers.
 
 ### Step 2: Frame the Question
 
@@ -653,6 +653,8 @@ chmod 600 .hydra/state.json
        ],
        "verdict_lead": "first 2-3 sentences of verdict",
        "mode": "{PRESET_NAME}",
+       "is_windowed": true|false,
+       "scope_pct": 0-100 | null,
        "reviewed_files": ["path/to/file1", ...]
      }
    }
@@ -672,8 +674,12 @@ chmod 600 .hydra/state.json
 
    **Write audit log:** Append one JSONL line to `.hydra/audit.log`:
    ```json
-   {"timestamp":"{{ISO_TIMESTAMP}}","session_id":"HYDRA-{{BASE}}","mode":"{{MODE}}","question_type":"{{TYPE}}","reviewed_files":[...],"advisors":[{"name":"Cassandra","model":"opus","status":"responded","position":"CONCERN"}],"reviewers":[{"number":1,"model":"opus","status":"responded"}],"chairman":{"model":"opus","status":"responded"},"verdict_position":"CONCERN","degradations":[],"report_path":"{{PATH}}","duration_seconds":{{N}},"iteration":false}
+   {"timestamp":"{{ISO_TIMESTAMP}}","session_id":"HYDRA-{{BASE}}","mode":"{{MODE}}","is_windowed":{{IS_WINDOWED}},"scope_pct":{{SCOPE_PCT_OR_NULL}},"question_type":"{{TYPE}}","reviewed_files":[...],"advisors":[{"name":"Cassandra","model":"opus","status":"responded","position":"CONCERN"}],"reviewers":[{"number":1,"model":"opus","status":"responded"}],"chairman":{"model":"opus","status":"responded"},"verdict_position":"CONCERN","degradations":[],"report_path":"{{PATH}}","duration_seconds":{{N}},"iteration":false}
    ```
+   **Template substitution rules** (apply to the audit.log JSON line, the state.json schema, and the report frontmatter):
+   - `{{IS_WINDOWED}}` -> bareword `true` or `false` (unquoted JSON/YAML boolean, never the string `"true"`).
+   - `{{SCOPE_PCT_OR_NULL}}` -> integer literal (e.g. `46`) when `IS_WINDOWED=true`, or the bareword `null` when `IS_WINDOWED=false`. Never emit the string `"null"`.
+
    Create `.hydra/audit.log` with `chmod 600` on first run. Append-only.
 
    **Report integrity:** Compute checksum on the assembled report body BEFORE prepending
