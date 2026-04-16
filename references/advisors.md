@@ -77,7 +77,7 @@ IMPORTANT: Your response MUST end with a structured JSON epilog (details below).
 
 STRUCTURED OUTPUT:
 Place the JSON epilog as the VERY LAST thing in your response, after ALL prose and
-the POSITION line. Use these exact delimiters:
+the POSITION line. Do NOT wrap the JSON in markdown code fences. Use these exact delimiters:
 
 ---HYDRA-STRUCTURED [{{BOUNDARY}}]---
 {your JSON here}

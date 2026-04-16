@@ -175,7 +175,7 @@ Map question type to signal line:
 
 SEVERITY   CRITICAL [{{N}}]  SERIOUS [{{N}}]  MODERATE [{{N}}]
 CONFIDENCE {{SCORE}}% ({{LABEL}}) -- {{N}}/{{M}} advisors -- {{cross-model|opus-only}}
-{{IF diff_context}} SCOPE    {{DIFF_LINES}}/{{EST_TOTAL}} lines ({{PCT}}%) -- diff-anchored review{{ENDIF}}
+{{IF diff_context}} SCOPE    {{DIFF_LINES}}/{{EST_TOTAL_LINES}} lines ({{SCOPE_PCT}}%) -- diff-anchored review{{ENDIF}}
 VERDICT    {{ONE sentence from chairman. Active voice. No hedging.}}
 
 --- ACTION REQUIRED ---

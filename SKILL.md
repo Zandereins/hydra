@@ -241,6 +241,15 @@ for CLAUDE.md and project structure where relevant.
 
 For `hydra this`: no windowing. Use full `[SECTION:source_code]` as before.
 
+**Set `IS_WINDOWED`:** After context construction, set `IS_WINDOWED = true` if `[SECTION:diff_context]`
+was used (branch/iterate/pr), `false` otherwise. This variable is consumed by confidence calibration
+in Step 5.
+
+**Scope metrics** (computed when `IS_WINDOWED = true`, used by report-template + in-conversation summary):
+- `DIFF_LINES`: count non-header lines in the assembled diff_context
+- `EST_TOTAL_LINES`: sum of `wc -l` for all reviewed files
+- `SCOPE_PCT`: `round(DIFF_LINES / max(EST_TOTAL_LINES, 1) * 100)`
+
 ### Step 2: Frame the Question
 
 ```
@@ -507,7 +516,7 @@ computation. Use structured output JSON fields when available, fall back to pros
 force label to LOW with note: `(degraded: {{N}}/{{EXPECTED}} responded)`.
 
 **Scope indicator** (always show when `diff_context` is active):
-Print after confidence line: `SCOPE {{DIFF_LINES}}/{{EST_TOTAL_LINES}} lines ({{PCT}}%) -- diff-anchored review`
+Print after confidence line: `SCOPE {{DIFF_LINES}}/{{EST_TOTAL_LINES}} lines ({{SCOPE_PCT}}%) -- diff-anchored review`
 If 0 findings + windowed: append warning: `Note: 0 findings on limited scope does NOT validate unreviewed code.`
 
 **Display format:** `Confidence: {{SCORE}}% ({{LABEL}})` — e.g., `Confidence: 78% (HIGH)`.
