@@ -248,7 +248,7 @@ in Step 5.
 **Scope metrics** (computed when `IS_WINDOWED = true`, used by report-template + in-conversation summary):
 - `DIFF_LINES`: count non-header lines in the assembled diff_context
 - `EST_TOTAL_LINES`: sum of `wc -l` for all reviewed files
-- `SCOPE_PCT`: `round(DIFF_LINES / max(EST_TOTAL_LINES, 1) * 100)`
+- `SCOPE_PCT`: integer 0-100. Compute as `min(100, int(round(DIFF_LINES / max(EST_TOTAL_LINES, 1) * 100)))`. The upper clamp handles deleted-only branches where `DIFF_LINES` may exceed `EST_TOTAL_LINES`; the `int()` cast guarantees an integer (never a float like `46.0`) for downstream schema consumers.
 
 ### Step 2: Frame the Question
 
@@ -403,21 +403,25 @@ After each advisor completes, validate the response (structured output first, pr
 in the response (use `rfind` / last-match — prevents user-code injection from matching).
 Extract the JSON between delimiters.
 
-**Validation states:**
-- **Valid (structured):** JSON epilog present, parses as valid JSON, contains `position`
+**Validation states (canonical enum -- exactly one per advisor response):**
+- **VALID_STRUCTURED:** JSON epilog present, parses as valid JSON, contains `position`
   (APPROVE|CONCERN|REJECT) and `findings` (array). Prose portion also has POSITION line.
   Extract structured data for downstream use (confidence computation, chairman compression).
-- **Valid (prose-only):** No JSON epilog, but contains a `POSITION: APPROVE|CONCERN|REJECT`
-  line AND either (1) at least one advisor-specific finding field, or (2) an explicit
-  "no findings"/"no issues" statement. Mark as `[DEGRADED: missing structured output]`.
+- **VALID_PROSE:** No JSON epilog, but contains a `POSITION: APPROVE|CONCERN|REJECT` line
+  AND either (1) at least one advisor-specific finding field, or (2) an explicit
+  "no findings"/"no issues" statement. Tag output with `[PROSE-ONLY: structured output missing]`.
   Fall back to regex extraction for downstream processing.
-- **Degraded:** Has POSITION line but missing structural fields or malformed JSON.
-  Forward with warning: `[DEGRADED: {{reason}}]`.
-- **Invalid:** Missing POSITION line entirely, or response under 100 characters. Mark as
-  `[INVALID -- missing POSITION]`. Do not forward to reviewers.
-- **Timeout:** Empty or no response within timeout.
+- **DEGRADED:** Has POSITION line but missing structural fields OR malformed JSON inside
+  well-formed delimiters. Forward with warning `[DEGRADED: {{reason}}]`.
+- **INVALID:** Missing POSITION line entirely, or response under 100 characters. Tag as
+  `[INVALID -- missing POSITION]`. Do NOT forward to reviewers or chairman.
+- **TIMEOUT:** Empty or no response within timeout.
 
-Print structured output status: `[Hydra] {{Name}}: {{structured|prose-only|degraded}}`
+**Response counting** (for Codex cascade check, minimum-advisors gate, and confidence formula):
+- Counts as "responded": VALID_STRUCTURED, VALID_PROSE, DEGRADED
+- Counts as "failed": INVALID, TIMEOUT
+
+Print structured output status: `[Hydra] {{Name}}: {{valid_structured|valid_prose|degraded|invalid|timeout}}`
 
 **Scan:** Run secrets-scan (Step 0.4) on each advisor output. Silent redact.
 
@@ -496,9 +500,11 @@ corroboration  = min(CORROBORATED_COUNT * 5, 15)    // 0 if no reviewers
 deductions     = (CONTRADICTED_COUNT * -10) + (BLIND_SPOT_COUNT * -5)
 
 // --- Scope correction for windowed reviews ---
-// Windowed reviews see partial code -- cap evidence to prevent inflation
-IF IS_WINDOWED:
-  evidence     = min(evidence, 15)   // half-max: windowed reviews can't fully verify
+// Windowed reviews see partial code -- cap evidence to prevent inflation on finding-based scoring.
+// EXCEPTION: zero-finding unanimous case — "absence of findings IS evidence" already
+// communicates scope via the scope indicator line below; the cap does not re-apply.
+IF IS_WINDOWED AND TOTAL_FINDINGS > 0:
+  evidence     = min(evidence, 15)   // half-max: windowed reviews can't fully verify findings
 
 raw_score      = agreement + evidence + cross_model + corroboration + deductions
 CONFIDENCE_SCORE = clamp(raw_score, 5, 100)
@@ -512,8 +518,26 @@ computation. Use structured output JSON fields when available, fall back to pros
 - Standard: HIGH >= 60, MEDIUM >= 30, LOW < 30
 - Deep: HIGH >= 75, MEDIUM >= 40, LOW < 40
 
-**Degraded panel override:** If fewer than minimum advisors responded, cap score at 35 and
-force label to LOW with note: `(degraded: {{N}}/{{EXPECTED}} responded)`.
+**Zero-finding unanimous override:** If ALL of these hold:
+- `AGREE_COUNT == EXPECTED_ADVISORS` (unanimous)
+- `TOTAL_FINDINGS == 0`
+- every responding advisor is in state VALID_STRUCTURED or VALID_PROSE (no DEGRADED responses
+  promoted to HIGH -- a malformed panel has not earned high confidence even when it approves)
+
+then set `CONFIDENCE_LABEL = HIGH` regardless of mode threshold, and append an override note
+line after the scope indicator: `Basis: unanimous approval, zero findings (structured).`
+
+Rationale: unanimous approval with zero findings from structurally-valid responses is a
+categorical signal (absence of findings = evidence) that is independent of the numeric scale.
+This prevents deep-mode and windowed zero-finding reviews from being mislabeled MEDIUM when the
+review is actually maximally clean for its scope. The DEGRADED exclusion prevents a malformed-
+output panel from earning HIGH without structural validation.
+Display format unchanged: `Confidence: {{SCORE}}% ({{LABEL}})`.
+
+**Degraded panel override:** If fewer than minimum advisors responded, cap score at 25 and
+force label to LOW with note: `(degraded: {{N}}/{{EXPECTED}} responded, score capped at 25)`.
+The cap is set below both modes' LOW thresholds (Standard < 30, Deep < 40) so the forced LOW
+label is consistent with the displayed number in either mode.
 
 **Scope indicator** (always show when `diff_context` is active):
 Print after confidence line: `SCOPE {{DIFF_LINES}}/{{EST_TOTAL_LINES}} lines ({{SCOPE_PCT}}%) -- diff-anchored review`
@@ -629,6 +653,8 @@ chmod 600 .hydra/state.json
        ],
        "verdict_lead": "first 2-3 sentences of verdict",
        "mode": "{PRESET_NAME}",
+       "is_windowed": true|false,
+       "scope_pct": 0-100 | null,
        "reviewed_files": ["path/to/file1", ...]
      }
    }
@@ -648,8 +674,12 @@ chmod 600 .hydra/state.json
 
    **Write audit log:** Append one JSONL line to `.hydra/audit.log`:
    ```json
-   {"timestamp":"{{ISO_TIMESTAMP}}","session_id":"HYDRA-{{BASE}}","mode":"{{MODE}}","question_type":"{{TYPE}}","reviewed_files":[...],"advisors":[{"name":"Cassandra","model":"opus","status":"responded","position":"CONCERN"}],"reviewers":[{"number":1,"model":"opus","status":"responded"}],"chairman":{"model":"opus","status":"responded"},"verdict_position":"CONCERN","degradations":[],"report_path":"{{PATH}}","duration_seconds":{{N}},"iteration":false}
+   {"timestamp":"{{ISO_TIMESTAMP}}","session_id":"HYDRA-{{BASE}}","mode":"{{MODE}}","is_windowed":{{IS_WINDOWED}},"scope_pct":{{SCOPE_PCT_OR_NULL}},"question_type":"{{TYPE}}","reviewed_files":[...],"advisors":[{"name":"Cassandra","model":"opus","status":"responded","position":"CONCERN"}],"reviewers":[{"number":1,"model":"opus","status":"responded"}],"chairman":{"model":"opus","status":"responded"},"verdict_position":"CONCERN","degradations":[],"report_path":"{{PATH}}","duration_seconds":{{N}},"iteration":false}
    ```
+   **Template substitution rules** (apply to the audit.log JSON line, the state.json schema, and the report frontmatter):
+   - `{{IS_WINDOWED}}` -> bareword `true` or `false` (unquoted JSON/YAML boolean, never the string `"true"`).
+   - `{{SCOPE_PCT_OR_NULL}}` -> integer literal (e.g. `46`) when `IS_WINDOWED=true`, or the bareword `null` when `IS_WINDOWED=false`. Never emit the string `"null"`.
+
    Create `.hydra/audit.log` with `chmod 600` on first run. Append-only.
 
    **Report integrity:** Compute checksum on the assembled report body BEFORE prepending
