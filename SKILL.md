@@ -518,12 +518,21 @@ computation. Use structured output JSON fields when available, fall back to pros
 - Standard: HIGH >= 60, MEDIUM >= 30, LOW < 30
 - Deep: HIGH >= 75, MEDIUM >= 40, LOW < 40
 
-**Zero-finding unanimous override:** If `AGREE_COUNT == EXPECTED_ADVISORS` AND `TOTAL_FINDINGS == 0`,
-set `CONFIDENCE_LABEL = HIGH` regardless of mode threshold. Rationale: unanimous approval with zero
-findings is a categorical signal (absence of findings = evidence) that is independent of the numeric
-scale. This prevents deep-mode and windowed zero-finding reviews from being mislabeled MEDIUM when
-the review is actually maximally clean for its scope.
-Display: `Confidence: {{SCORE}}% (HIGH -- unanimous, zero findings)`.
+**Zero-finding unanimous override:** If ALL of these hold:
+- `AGREE_COUNT == EXPECTED_ADVISORS` (unanimous)
+- `TOTAL_FINDINGS == 0`
+- every responding advisor is in state VALID_STRUCTURED or VALID_PROSE (no DEGRADED responses
+  promoted to HIGH -- a malformed panel has not earned high confidence even when it approves)
+
+then set `CONFIDENCE_LABEL = HIGH` regardless of mode threshold, and append an override note
+line after the scope indicator: `Basis: unanimous approval, zero findings (structured).`
+
+Rationale: unanimous approval with zero findings from structurally-valid responses is a
+categorical signal (absence of findings = evidence) that is independent of the numeric scale.
+This prevents deep-mode and windowed zero-finding reviews from being mislabeled MEDIUM when the
+review is actually maximally clean for its scope. The DEGRADED exclusion prevents a malformed-
+output panel from earning HIGH without structural validation.
+Display format unchanged: `Confidence: {{SCORE}}% ({{LABEL}})`.
 
 **Degraded panel override:** If fewer than minimum advisors responded, cap score at 25 and
 force label to LOW with note: `(degraded: {{N}}/{{EXPECTED}} responded, score capped at 25)`.
