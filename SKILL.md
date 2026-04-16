@@ -220,12 +220,31 @@ specific code (`hydra this`).
 
 Construction of `[SECTION:diff_context]`:
 ```bash
-# hydra branch / hydra pr: hunks against base branch
-BASE=$(git merge-base HEAD main)  # fallback: master, develop
-git diff -U30 "$BASE"...HEAD -- <reviewed_files>
+# --- Input validation (defense against malicious filenames / state.json tampering) ---
+# reviewed_files must only contain safe path chars and must not start with '-' (otherwise
+# git may interpret the value as a flag). Abort on any violation.
+for f in "${reviewed_files[@]}"; do
+  case "$f" in
+    -*) echo "[Hydra] Refusing suspicious filename (leading dash): $f" >&2; exit 1 ;;
+  esac
+  [[ "$f" =~ ^[A-Za-z0-9._/-]+$ ]] || {
+    echo "[Hydra] Invalid filename in reviewed_files: $f -- aborting" >&2; exit 1
+  }
+done
 
-# hydra iterate: hunks since previous report
-git diff -U30 "@{$PREV_TIMESTAMP}" -- <reviewed_files>
+# PREV_TIMESTAMP must match YYYYMMDDTHHMMSS (matches the report-slug convention); if
+# state.json was tampered or carries garbage, discard the field rather than interpolate.
+if [[ -n "$PREV_TIMESTAMP" && ! "$PREV_TIMESTAMP" =~ ^[0-9]{8}T[0-9]{6}$ ]]; then
+  echo "[Hydra] Invalid PREV_TIMESTAMP '$PREV_TIMESTAMP' -- falling back to full diff" >&2
+  unset PREV_TIMESTAMP
+fi
+
+# hydra branch / hydra pr: hunks against base branch (note `--` separator enforces pathspec)
+BASE=$(git merge-base HEAD main)  # fallback: master, develop
+git diff -U30 "$BASE"...HEAD -- "${reviewed_files[@]}"
+
+# hydra iterate: hunks since previous report (PREV_TIMESTAMP already validated above)
+git diff -U30 "@{$PREV_TIMESTAMP}" -- "${reviewed_files[@]}"
 ```
 
 `-U30` provides 30 lines of surrounding context per hunk -- no post-processing needed.
@@ -460,7 +479,7 @@ Read `references/chairman-protocol.md` for verdict formats and the focused chair
 Before choosing a verdict path, compute from advisor/reviewer outputs:
 
 1. **Position tally:** Count APPROVE/CONCERN/REJECT. Set `{{AGREE_COUNT}}` = most common count.
-2. **Cross-model matches:** Opus finding + Codex finding on same file + issue class. Set `{{CROSS_MODEL_COUNT}}`. Opus-only: 0.
+2. **Cross-model matches:** Opus finding + Codex finding matched by the unified finding-dedup key (same file + overlapping line range + same issue class; see deduplication rule below). Set `{{CROSS_MODEL_COUNT}}`. Opus-only: 0.
 3. **Verified count:** Count all `[VERIFIED]` labels. Set `{{VERIFIED_COUNT}}`.
 4. **Signal line:** CODE_REVIEW→"quality assessment", ARCHITECTURE_DECISION→"confidence level",
    SECURITY_AUDIT→"risk level", DEBUGGING/GENERAL_TECHNICAL→"root-cause confidence".
@@ -510,9 +529,18 @@ raw_score      = agreement + evidence + cross_model + corroboration + deductions
 CONFIDENCE_SCORE = clamp(raw_score, 5, 100)
 ```
 
-**Finding deduplication** (before computing VERIFIED_COUNT): Findings from different advisors
-on the same `file:line_range` with the same severity class count as 1 finding for confidence
-computation. Use structured output JSON fields when available, fall back to prose extraction.
+**Finding deduplication** (unified key, applied before computing VERIFIED_COUNT AND for cross-model
+matching): Findings from different advisors count as 1 finding when ALL of the following hold:
+- same `file` path
+- overlapping `line_range` (any line shared between the two ranges, not exact equality -- so
+  `auth.ts:47-62` and `auth.ts:48-55` are the same finding)
+- same `issue_class` (the semantic category -- e.g. "race condition", "null deref", "SQL
+  injection" -- derived from the finding title or from the advisor's scope signature; NOT
+  severity, which may legitimately differ across advisors describing the same phenomenon)
+
+Use structured output JSON fields (`file`, `lines`, `title`) when available, fall back to prose
+extraction. Severity is NOT part of the key; this avoids treating the same issue reported at
+SERIOUS by Cassandra and MODERATE by Navigator as two distinct findings.
 
 **Mode-aware label thresholds** (standard lacks reviewers + cross-model, so thresholds are lower):
 - Standard: HIGH >= 60, MEDIUM >= 30, LOW < 30
@@ -564,10 +592,13 @@ Print: `[Hydra] Verdict path: {{deterministic|focused chairman}} ({{reason}}).`
 **--- DETERMINISTIC PATH ---**
 No chairman agent spawned. Orchestrator assembles verdict from pre-computed data:
 1. Verdict position from unanimous tally (APPROVE or CONCERN).
-2. Findings ordered by Reviewer 2's Effort-Risk Ranking (if available) or severity desc.
-3. Summary block: Top Actions from ranking, Key Tensions = "None", Insight = omit.
-4. Decision rationale: "Unanimous {{POSITION}}, {{N}} advisors, no disputes."
-5. If `HYDRA_ITERATE`: DELTA BLOCK assembled mechanically (match findings vs previous top_actions).
+2. Confidence line: emit `**Confidence:** {{CONFIDENCE_SCORE}}% ({{CONFIDENCE_LABEL}})` immediately
+   after the position — using the pre-computed PANEL SUMMARY values, matching the chairman-path
+   verdict template so deterministic and chairman outputs are indistinguishable to downstream consumers.
+3. Findings ordered by Reviewer 2's Effort-Risk Ranking (if available) or severity desc.
+4. Summary block: Top Actions from ranking, Key Tensions = "None", Insight = omit.
+5. Decision rationale: "Unanimous {{POSITION}}, {{N}} advisors, no disputes."
+6. If `HYDRA_ITERATE`: DELTA BLOCK assembled mechanically (match findings vs previous top_actions).
 
 **--- FOCUSED CHAIRMAN PATH ---**
 Spawn 1 Opus agent with focused chairman prompt from `references/chairman-protocol.md`.

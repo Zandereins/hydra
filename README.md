@@ -22,6 +22,7 @@ code review with cross-model diversity (Claude Opus + OpenAI Codex).
 ## Hydra Verdict: auth-middleware-refactor
 
 **Solid refactor with one critical gap in token refresh handling.**
+**Confidence:** 82% (HIGH)
 
 The middleware correctly centralizes auth checks, but the refresh token
 flow has a race condition under concurrent requests -- Cassandra and
