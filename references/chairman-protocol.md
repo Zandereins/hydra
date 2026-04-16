@@ -39,7 +39,7 @@ DEBUGGING -> general, GENERAL_TECHNICAL -> general.
 ```
 ## Verdict
 **Recommendation:** One sentence.
-**Confidence:** HIGH | MEDIUM | LOW
+**Confidence:** {{N}}% (HIGH | MEDIUM | LOW)
 
 **Core Reasoning:** 3-5 sentences.
 
@@ -74,7 +74,7 @@ DEBUGGING -> general, GENERAL_TECHNICAL -> general.
 ```
 ## Verdict
 **Answer/Root Cause:** 2-3 sentences.
-**Confidence:** HIGH | MEDIUM | LOW
+**Confidence:** {{N}}% (HIGH | MEDIUM | LOW)
 **Evidence:** Advisor references.
 **Key Considerations:** [with attribution]
 **Cross-Model Signals:** [divergences or consensus]
@@ -166,7 +166,11 @@ RULES:
   Tier 2 -- EVIDENCE AMBIGUOUS: Both have evidence for different aspects. Apply the REVERSIBILITY test: which option is easier to undo? Recommend the reversible option. State the trigger condition for revisiting.
   Tier 3 -- NEEDS CHECK: Neither side has sufficient evidence AND stakes are HIGH (SERIOUS+). Mark as `**UNRESOLVED -- Needs Check:**` with: exactly what to check (command, test, file inspection), which position wins if check confirms X vs Y, estimated effort (<5min / <30min / >30min).
 - **SELF-VERIFY DISPUTES:** When two advisors disagree about a CODE FACT (does X call Y? Is Z validated?), check the source code in ENRICHED_CONTEXT yourself. Your direct verification overrides both positions. Label as [CHAIRMAN-VERIFIED].
-- **CONFIDENCE:** The orchestrator provides pre-computed counts (agreement, cross-model, verified) in PANEL SUMMARY. Use them to express confidence as: LEVEL (basis). HIGH: 4+ agree OR 2+ cross-model OR 3+ [VERIFIED]. MEDIUM: 2-3 agree, mixed. LOW: split, mostly [HYPOTHESIS], or degraded.
+- **CONFIDENCE:** Display the orchestrator's pre-computed confidence score exactly as provided in
+  PANEL SUMMARY: `Confidence: {{N}}% ({{LABEL}})`. Do NOT recalculate or adjust this number.
+  The ONLY exception: if you resolved a dispute that flipped a finding from REJECT-worthy to
+  non-blocking (or vice versa), state the original score, the new score, and the specific
+  finding ID that changed. If no dispute was resolved, no override is permitted.
 - **REVIEWER LABELS:** Reviewers use structured labels. Prioritize resolution of:
   - [CONTRADICTED] findings (reviewers identified advisor disagreements)
   - [CRITICAL MISS] findings (reviewers identified gaps advisors missed)
