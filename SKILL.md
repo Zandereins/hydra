@@ -205,11 +205,41 @@ Each iteration builds FRESH enriched context. Only Top Actions from the LATEST r
 Apply secrets scan to enriched context.
 
 **Context sectioning:** Tag enriched context sections internally for selective routing in Step 3:
-- `[SECTION:source_code]` -- file content
-- `[SECTION:git_diff]` -- git diff output
+- `[SECTION:source_code]` -- file content (used for `hydra this`)
+- `[SECTION:diff_context]` -- diff hunks + 30 lines surrounding context (used for `hydra branch`, `hydra iterate`, `hydra pr`)
+- `[SECTION:git_diff]` -- git diff stat/summary output
 - `[SECTION:claude_md]` -- CLAUDE.md contents
 - `[SECTION:project_structure]` -- directory tree
 - `[SECTION:config_files]` -- package.json, tsconfig, etc.
+
+**Smart Context Windowing** (for `hydra branch`, `hydra iterate`, `hydra pr`):
+
+`source_code` and `diff_context` are **mutually exclusive**. Use `diff_context` when the
+review is diff-anchored (branch/iterate/pr). Use `source_code` when the user provides
+specific code (`hydra this`).
+
+Construction of `[SECTION:diff_context]`:
+```bash
+# hydra branch / hydra pr: hunks against base branch
+BASE=$(git merge-base HEAD main)  # fallback: master, develop
+git diff -U30 "$BASE"...HEAD -- <reviewed_files>
+
+# hydra iterate: hunks since previous report
+git diff -U30 "@{$PREV_TIMESTAMP}" -- <reviewed_files>
+```
+
+`-U30` provides 30 lines of surrounding context per hunk -- no post-processing needed.
+This typically yields 1000-2000 tokens vs ~3000 for full file content, freeing budget
+for CLAUDE.md and project structure where relevant.
+
+**Diff budget strategy** (prevents budget blow-up on large branches):
+1. Run `git diff --stat` first -- rank files by lines changed (descending).
+2. Include hunks file-by-file until reaching 3000 token budget (reserves 2000 for other sections).
+3. If focus flag active (e.g., `--focus security`): prioritize files matching focus signal patterns.
+4. Remaining files: include only as `[TRUNCATED: {{N}} more files -- see git diff --stat below]`.
+5. Always include the full `git diff --stat` summary so advisors know what they're NOT seeing.
+
+For `hydra this`: no windowing. Use full `[SECTION:source_code]` as before.
 
 ### Step 2: Frame the Question
 
@@ -238,15 +268,22 @@ and each advisor's unique prompt. Interpolate `{{FRAMED_QUESTION}}`,
 `{{ENRICHED_CONTEXT}}`, and `{{BOUNDARY}}` (use `HYDRA_BOUNDARY_A` from Step 0) into the Common
 Preamble, then append each advisor's unique section.
 
-**Selective context routing:** Each advisor receives only the context sections relevant to their scope:
-| Advisor | source_code | git_diff | claude_md | project_structure | config_files |
-|---------|:-----------:|:--------:|:---------:|:-----------------:|:------------:|
+**Selective context routing:** Each advisor receives only the context sections relevant to their scope.
+`source_code` and `diff_context` are mutually exclusive (see Step 1). When `diff_context` is
+active (branch/iterate/pr), advisors that had `source_code` receive `diff_context` instead.
+
+| Advisor | source_code / diff_context | git_diff | claude_md | project_structure | config_files |
+|---------|:--------------------------:|:--------:|:---------:|:-----------------:|:------------:|
 | Cassandra | Y | Y | | | |
 | Mies | Y | Y | Y | Y | Y |
 | Navigator | Y | Y | | Y | |
 | Stranger | Y | Y | | | |
 | Volta | Y | Y | | | Y |
 | Sentinel | Y | Y | | | |
+
+When `diff_context` is active, all advisors receive diff hunks + 30-line context instead of
+full file content. The `-U30` window provides sufficient surrounding code for failure-chain
+analysis (Cassandra), boundary tracing (Navigator), and readability assessment (Stranger).
 
 **Which advisors** -- see Modes table above. In standard mode: Cassandra, Stranger, Sentinel (3 advisors).
 In deep mode: all 6 advisors. With `--no-codex`, Stranger and Sentinel run as Opus agents
@@ -350,14 +387,28 @@ All advisors dispatched in parallel (Opus) and sequentially (Codex, but overlapp
 Print: `[Hydra] Advisors spawned ({{N}}). Waiting...`
 As each completes: `[Hydra] {{Name}} done ({{M}}/{{N}}) {{TIME}}s {{MODEL_TAG}}`
 
-After each advisor completes, validate the response:
-- **Valid:** Contains a `POSITION: APPROVE|CONCERN|REJECT` line AND either (1) at least one
-  advisor-specific finding field, or (2) an explicit "no findings"/"no issues" statement.
-- **Degraded:** Has POSITION line but missing structural fields. Forward with warning:
-  `[DEGRADED: missing {{fields}}]`.
+After each advisor completes, validate the response (structured output first, prose fallback):
+
+**Structured output extraction:** Search for the LAST occurrence of
+`---HYDRA-STRUCTURED [{{BOUNDARY_A}}]---` / `---END-HYDRA-STRUCTURED [{{BOUNDARY_A}}]---`
+in the response (use `rfind` / last-match — prevents user-code injection from matching).
+Extract the JSON between delimiters.
+
+**Validation states:**
+- **Valid (structured):** JSON epilog present, parses as valid JSON, contains `position`
+  (APPROVE|CONCERN|REJECT) and `findings` (array). Prose portion also has POSITION line.
+  Extract structured data for downstream use (confidence computation, chairman compression).
+- **Valid (prose-only):** No JSON epilog, but contains a `POSITION: APPROVE|CONCERN|REJECT`
+  line AND either (1) at least one advisor-specific finding field, or (2) an explicit
+  "no findings"/"no issues" statement. Mark as `[DEGRADED: missing structured output]`.
+  Fall back to regex extraction for downstream processing.
+- **Degraded:** Has POSITION line but missing structural fields or malformed JSON.
+  Forward with warning: `[DEGRADED: {{reason}}]`.
 - **Invalid:** Missing POSITION line entirely, or response under 100 characters. Mark as
   `[INVALID -- missing POSITION]`. Do not forward to reviewers.
 - **Timeout:** Empty or no response within timeout.
+
+Print structured output status: `[Hydra] {{Name}}: {{structured|prose-only|degraded}}`
 
 **Scan:** Run secrets-scan (Step 0.4) on each advisor output. Silent redact.
 
@@ -412,9 +463,57 @@ Build from advisor POSITION lines:
 - Override: APPROVE + SERIOUS findings → CONCERN with note
 - Timeout → "N/A" / "[TIMEOUT]"
 
-**Confidence pre-computation** (mode-aware thresholds):
-- Standard (3 advisors): HIGH = unanimous (3/3) OR `{{VERIFIED_COUNT}}` >= 3. MEDIUM = 2/3 agree. LOW = split.
-- Deep (6 advisors): HIGH = `{{AGREE_COUNT}}` >= 4 OR `{{CROSS_MODEL_COUNT}}` >= 2 OR `{{VERIFIED_COUNT}}` >= 3. MEDIUM = 2-3 agree, mixed. LOW = split, mostly [HYPOTHESIS], or degraded.
+**Confidence calibration** (numeric 0-100% with backward-compatible labels):
+
+Compute `CONFIDENCE_SCORE` from pre-computed values (use structured output JSON when available,
+fall back to regex extraction from prose):
+
+```
+EXPECTED_ADVISORS = 3 (standard) or 6 (deep)  // always expected, not responding
+TOTAL_FINDINGS    = sum of all findings across responding advisors
+IS_WINDOWED       = true if diff_context was used (branch/iterate/pr)
+
+// --- Base components ---
+agreement      = (AGREE_COUNT / EXPECTED_ADVISORS) * 40
+
+// Evidence: zero findings with unanimous approval = full marks (absence of findings IS evidence)
+IF TOTAL_FINDINGS == 0 AND AGREE_COUNT == EXPECTED_ADVISORS:
+  evidence     = 30
+ELSE:
+  evidence     = (VERIFIED_COUNT / max(TOTAL_FINDINGS, 1)) * 30
+
+cross_model    = min(CROSS_MODEL_COUNT * 15, 30)
+corroboration  = min(CORROBORATED_COUNT * 5, 15)    // 0 if no reviewers
+deductions     = (CONTRADICTED_COUNT * -10) + (BLIND_SPOT_COUNT * -5)
+
+// --- Scope correction for windowed reviews ---
+// Windowed reviews see partial code -- cap evidence to prevent inflation
+IF IS_WINDOWED:
+  evidence     = min(evidence, 15)   // half-max: windowed reviews can't fully verify
+
+raw_score      = agreement + evidence + cross_model + corroboration + deductions
+CONFIDENCE_SCORE = clamp(raw_score, 5, 100)
+```
+
+**Finding deduplication** (before computing VERIFIED_COUNT): Findings from different advisors
+on the same `file:line_range` with the same severity class count as 1 finding for confidence
+computation. Use structured output JSON fields when available, fall back to prose extraction.
+
+**Mode-aware label thresholds** (standard lacks reviewers + cross-model, so thresholds are lower):
+- Standard: HIGH >= 60, MEDIUM >= 30, LOW < 30
+- Deep: HIGH >= 75, MEDIUM >= 40, LOW < 40
+
+**Degraded panel override:** If fewer than minimum advisors responded, cap score at 35 and
+force label to LOW with note: `(degraded: {{N}}/{{EXPECTED}} responded)`.
+
+**Scope indicator** (always show when `diff_context` is active):
+Print after confidence line: `SCOPE {{DIFF_LINES}}/{{EST_TOTAL_LINES}} lines ({{PCT}}%) -- diff-anchored review`
+If 0 findings + windowed: append warning: `Note: 0 findings on limited scope does NOT validate unreviewed code.`
+
+**Display format:** `Confidence: {{SCORE}}% ({{LABEL}})` — e.g., `Confidence: 78% (HIGH)`.
+
+Inject into PANEL SUMMARY as `CONFIDENCE: {{SCORE}}% ({{LABEL}})` for chairman consumption.
+The chairman uses this value as-is and does not recompute.
 
 **Path decision tree:**
 ```
@@ -441,11 +540,15 @@ No chairman agent spawned. Orchestrator assembles verdict from pre-computed data
 Spawn 1 Opus agent with focused chairman prompt from `references/chairman-protocol.md`.
 Use `HYDRA_BOUNDARY_C` for delimiters. Adapt per MODE ADAPTATION rules.
 
-**Chairman input optimization:** Send only `[SECTION:source_code]` (not CLAUDE.md/config).
-**Advisor output compression:** Extract POSITION + findings + evidence chains + labels (~600 tokens each).
+**Chairman input optimization:** Send `[SECTION:diff_context]` when available (branch/iterate/pr),
+otherwise `[SECTION:source_code]` (never CLAUDE.md/config). For disputed findings ([CONTRADICTED]),
+include the full source section for the affected file to enable chairman self-verification.
+**Advisor output compression:** When structured output (JSON epilog) is available, extract
+the JSON epilog + first finding's prose for context (~400 tokens each). Fall back to
+POSITION + findings + evidence chains + labels (~600 tokens each) if no JSON epilog.
 
 Pre-computed injections before RULES:
-- `CONFIDENCE: {{level + basis}}`
+- `CONFIDENCE: {{SCORE}}% ({{LABEL}})` (from confidence calibration above)
 - `CROSS-MODEL MATCHES: {{list or "None"}}`
 - `EFFORT-RISK RANKING: {{from Reviewer 2}}`
 - `DISPUTES: {{[CONTRADICTED] findings with both positions}}`
