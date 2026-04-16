@@ -17,6 +17,7 @@ DEBUGGING -> general, GENERAL_TECHNICAL -> general.
 ```
 ## Verdict
 **Summary:** 2-3 sentences. Quality + most important action.
+**Confidence:** {{N}}% ({{LABEL}})
 
 **Critical Issues** (must fix):
 1. **[VERIFIED/HYPOTHESIS]** [Issue]: What -> why -> fix. `file:line-range` -> `function_name`.
@@ -58,6 +59,7 @@ DEBUGGING -> general, GENERAL_TECHNICAL -> general.
 ```
 ## Verdict
 **Risk Level:** CRITICAL | HIGH | MEDIUM | LOW
+**Confidence:** {{N}}% ({{LABEL}})
 
 **Findings** (by severity):
 1. **[SEVERITY]** **[VERIFIED/HYPOTHESIS]** Title

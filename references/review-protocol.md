@@ -73,7 +73,10 @@ SECTION B: CROSS-ADVISOR ANALYSIS (~200 words)
 **Corroborated findings:** Which findings are backed by 2+ advisors? List with labels.
   Use [CORROBORATED] tag for each.
 **Contradictions:** Where do advisors disagree? For each: who says what, which has
-  stronger code evidence. Use [CONTRADICTED] tag.
+  stronger code evidence. Use [CONTRADICTED] tag. Note: in windowed reviews
+  (`diff_context` active per SKILL.md Step 1), evidence gaps may reflect limited scope
+  rather than weak advisor work -- weigh against the `SCOPE` indicator from Step 5 before
+  penalizing an advisor for "missing" evidence that is structurally unavailable.
 **The gap:** One consideration NO advisor addressed that matters for this question.
 
 SECTION C: PER-ADVISOR VERDICTS (~{{PART_C_WORDS}} words)
