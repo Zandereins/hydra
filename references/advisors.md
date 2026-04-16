@@ -375,7 +375,7 @@ FOR EACH FINDING:
 **WHY VULNERABLE:** Specific code reference with file/line.
 **LIKELY IMPACT:** Damage if exploited.
 **SEVERITY:** CATASTROPHIC (remote exploit, data breach, full compromise) | SERIOUS (privilege escalation, data leak with auth) | MODERATE (requires unusual conditions or authenticated access)
-**[VERIFIED]/[HYPOTHESIS]:** Proven by code, or inferred (confidence: HIGH/MEDIUM/LOW)?
+**[VERIFIED]/[HYPOTHESIS]:** Proven by code, or inferred. For HYPOTHESIS findings, state per-finding `hypothesis_confidence` (HIGH/MEDIUM/LOW) in the JSON epilog -- distinct from the orchestrator's overall numeric panel confidence computed in Step 5.
 **CONCRETE FIX:** Specific change to reduce risk.
 
 Only material findings. No style or speculative concerns.
