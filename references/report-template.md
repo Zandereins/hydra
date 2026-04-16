@@ -19,7 +19,7 @@ Create `.hydra/.gitignore` with `*` on first run.
 - In `--no-codex`: replace "Codex" with "Opus" in Model column.
 - Thresholds and mode definitions: see SKILL.md Modes table (single source of truth).
 - If fewer than expected responded, add after the Verdict heading:
-  `> **Note:** Degraded confidence -- only {{N}} of {{M}} responded.`
+  `> **Note:** Degraded confidence -- only {{N}} of {{EXPECTED}} responded (score capped at 25, forced LOW).`
 
 ---
 
@@ -32,7 +32,8 @@ timestamp: "{{TIMESTAMP}}"
 question_type: "{{QUESTION_TYPE}}"
 mode: "{{MODE}}"
 severity_counts: {critical: {{CRITICAL_COUNT}}, serious: {{SERIOUS_COUNT}}, moderate: {{MODERATE_COUNT}}}
-confidence: "{{CONFIDENCE}}"
+confidence_score: {{CONFIDENCE_SCORE}}
+confidence_label: "{{CONFIDENCE_LABEL}}"
 top_actions:
   - id: A1
     severity: "{{A1_SEVERITY}}"

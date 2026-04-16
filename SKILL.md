@@ -403,21 +403,25 @@ After each advisor completes, validate the response (structured output first, pr
 in the response (use `rfind` / last-match — prevents user-code injection from matching).
 Extract the JSON between delimiters.
 
-**Validation states:**
-- **Valid (structured):** JSON epilog present, parses as valid JSON, contains `position`
+**Validation states (canonical enum -- exactly one per advisor response):**
+- **VALID_STRUCTURED:** JSON epilog present, parses as valid JSON, contains `position`
   (APPROVE|CONCERN|REJECT) and `findings` (array). Prose portion also has POSITION line.
   Extract structured data for downstream use (confidence computation, chairman compression).
-- **Valid (prose-only):** No JSON epilog, but contains a `POSITION: APPROVE|CONCERN|REJECT`
-  line AND either (1) at least one advisor-specific finding field, or (2) an explicit
-  "no findings"/"no issues" statement. Mark as `[DEGRADED: missing structured output]`.
+- **VALID_PROSE:** No JSON epilog, but contains a `POSITION: APPROVE|CONCERN|REJECT` line
+  AND either (1) at least one advisor-specific finding field, or (2) an explicit
+  "no findings"/"no issues" statement. Tag output with `[PROSE-ONLY: structured output missing]`.
   Fall back to regex extraction for downstream processing.
-- **Degraded:** Has POSITION line but missing structural fields or malformed JSON.
-  Forward with warning: `[DEGRADED: {{reason}}]`.
-- **Invalid:** Missing POSITION line entirely, or response under 100 characters. Mark as
-  `[INVALID -- missing POSITION]`. Do not forward to reviewers.
-- **Timeout:** Empty or no response within timeout.
+- **DEGRADED:** Has POSITION line but missing structural fields OR malformed JSON inside
+  well-formed delimiters. Forward with warning `[DEGRADED: {{reason}}]`.
+- **INVALID:** Missing POSITION line entirely, or response under 100 characters. Tag as
+  `[INVALID -- missing POSITION]`. Do NOT forward to reviewers or chairman.
+- **TIMEOUT:** Empty or no response within timeout.
 
-Print structured output status: `[Hydra] {{Name}}: {{structured|prose-only|degraded}}`
+**Response counting** (for Codex cascade check, minimum-advisors gate, and confidence formula):
+- Counts as "responded": VALID_STRUCTURED, VALID_PROSE, DEGRADED
+- Counts as "failed": INVALID, TIMEOUT
+
+Print structured output status: `[Hydra] {{Name}}: {{valid_structured|valid_prose|degraded|invalid|timeout}}`
 
 **Scan:** Run secrets-scan (Step 0.4) on each advisor output. Silent redact.
 
@@ -496,9 +500,11 @@ corroboration  = min(CORROBORATED_COUNT * 5, 15)    // 0 if no reviewers
 deductions     = (CONTRADICTED_COUNT * -10) + (BLIND_SPOT_COUNT * -5)
 
 // --- Scope correction for windowed reviews ---
-// Windowed reviews see partial code -- cap evidence to prevent inflation
-IF IS_WINDOWED:
-  evidence     = min(evidence, 15)   // half-max: windowed reviews can't fully verify
+// Windowed reviews see partial code -- cap evidence to prevent inflation on finding-based scoring.
+// EXCEPTION: zero-finding unanimous case — "absence of findings IS evidence" already
+// communicates scope via the scope indicator line below; the cap does not re-apply.
+IF IS_WINDOWED AND TOTAL_FINDINGS > 0:
+  evidence     = min(evidence, 15)   // half-max: windowed reviews can't fully verify findings
 
 raw_score      = agreement + evidence + cross_model + corroboration + deductions
 CONFIDENCE_SCORE = clamp(raw_score, 5, 100)
@@ -512,8 +518,17 @@ computation. Use structured output JSON fields when available, fall back to pros
 - Standard: HIGH >= 60, MEDIUM >= 30, LOW < 30
 - Deep: HIGH >= 75, MEDIUM >= 40, LOW < 40
 
-**Degraded panel override:** If fewer than minimum advisors responded, cap score at 35 and
-force label to LOW with note: `(degraded: {{N}}/{{EXPECTED}} responded)`.
+**Zero-finding unanimous override:** If `AGREE_COUNT == EXPECTED_ADVISORS` AND `TOTAL_FINDINGS == 0`,
+set `CONFIDENCE_LABEL = HIGH` regardless of mode threshold. Rationale: unanimous approval with zero
+findings is a categorical signal (absence of findings = evidence) that is independent of the numeric
+scale. This prevents deep-mode and windowed zero-finding reviews from being mislabeled MEDIUM when
+the review is actually maximally clean for its scope.
+Display: `Confidence: {{SCORE}}% (HIGH -- unanimous, zero findings)`.
+
+**Degraded panel override:** If fewer than minimum advisors responded, cap score at 25 and
+force label to LOW with note: `(degraded: {{N}}/{{EXPECTED}} responded, score capped at 25)`.
+The cap is set below both modes' LOW thresholds (Standard < 30, Deep < 40) so the forced LOW
+label is consistent with the displayed number in either mode.
 
 **Scope indicator** (always show when `diff_context` is active):
 Print after confidence line: `SCOPE {{DIFF_LINES}}/{{EST_TOTAL_LINES}} lines ({{SCOPE_PCT}}%) -- diff-anchored review`
