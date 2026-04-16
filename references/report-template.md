@@ -19,7 +19,9 @@ Create `.hydra/.gitignore` with `*` on first run.
 - In `--no-codex`: replace "Codex" with "Opus" in Model column.
 - Thresholds and mode definitions: see SKILL.md Modes table (single source of truth).
 - If fewer than expected responded, add after the Verdict heading:
-  `> **Note:** Degraded confidence -- only {{N}} of {{M}} responded.`
+  `> **Note:** Degraded confidence -- only {{N}} of {{EXPECTED}} responded (score capped at 25, forced LOW).`
+- `is_windowed`: `true` for branch/iterate/pr reviews (diff_context active); `false` for `hydra this`. Emit as unquoted YAML boolean (`is_windowed: true` -- NOT `"true"`).
+- `scope_pct`: integer 0-100 when `is_windowed: true`; YAML `null` (bareword, unquoted) when `false`. Never emit the string `"null"`. Sourced from SKILL.md Step 1 scope metrics; matches the `SCOPE` line in the in-conversation summary.
 
 ---
 
@@ -32,7 +34,10 @@ timestamp: "{{TIMESTAMP}}"
 question_type: "{{QUESTION_TYPE}}"
 mode: "{{MODE}}"
 severity_counts: {critical: {{CRITICAL_COUNT}}, serious: {{SERIOUS_COUNT}}, moderate: {{MODERATE_COUNT}}}
-confidence: "{{CONFIDENCE}}"
+confidence_score: {{CONFIDENCE_SCORE}}
+confidence_label: "{{CONFIDENCE_LABEL}}"
+is_windowed: {{IS_WINDOWED}}
+scope_pct: {{SCOPE_PCT_OR_NULL}}
 top_actions:
   - id: A1
     severity: "{{A1_SEVERITY}}"
