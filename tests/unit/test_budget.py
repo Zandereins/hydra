@@ -9,7 +9,7 @@ from hydra.budget import Budget, BudgetExceeded, TokenUsage
 def test_charge_below_cap_succeeds() -> None:
     b = Budget(hard_cap_usd=2.00, soft_cap_usd=1.10)
     b.charge(TokenUsage(input=1000, output=500), price_in=3e-6, price_out=15e-6)
-    assert b.spent_usd == 1000 * 3e-6 + 500 * 15e-6
+    assert b.spent_usd == pytest.approx(1000 * 3e-6 + 500 * 15e-6)
 
 
 def test_charge_exceeds_hard_cap_raises() -> None:
@@ -78,3 +78,18 @@ def test_cache_tokens_with_price_are_charged() -> None:
     )
     expected = 100 * 3e-6 + 10 * 15e-6 + 50_000 * 0.3e-6
     assert b.spent_usd == pytest.approx(expected)
+
+
+def test_simultaneous_soft_and_hard_cap_sets_flag_before_raise() -> None:
+    b = Budget(hard_cap_usd=0.010, soft_cap_usd=0.005)
+    # Single charge crosses both caps.
+    with pytest.raises(BudgetExceeded):
+        b.charge(
+            TokenUsage(input=10_000, output=0),
+            price_in=3e-6,  # 0.03 projected — crosses both
+            price_out=15e-6,
+        )
+    # Soft-cap flag must be set even though hard-cap raised.
+    assert b.soft_cap_hit is True
+    # spent_usd still rolled back (raise before assignment).
+    assert b.spent_usd == 0.0

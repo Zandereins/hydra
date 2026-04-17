@@ -21,7 +21,7 @@ def test_run_config_round_trip() -> None:
         tensions_only=False,
         resolved_models={"cassandra": "claude-opus-4-7"},
         run_nonce="abc123",
-        config_hash="sha256:deadbeef",
+        config_hash="sha256:" + "0" * 64,
     )
     blob = cfg.model_dump_json()
     cfg2 = RunConfig.model_validate_json(blob)
@@ -74,3 +74,29 @@ def test_advisor_finding_has_required_fields() -> None:
 def test_issue_class_unknown_normalizes_to_other() -> None:
     assert IssueClass.normalize("made_up_class") == IssueClass.other
     assert IssueClass.normalize("race_condition") == IssueClass.race_condition
+
+
+def test_run_config_rejects_bad_nonce() -> None:
+    import pytest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError, match="run_nonce"):
+        RunConfig(
+            mode="deep", profile="quality", focus=None,
+            allow_broken=False, tensions_only=False,
+            resolved_models={},
+            run_nonce="ZZZZZZ",  # not hex
+            config_hash="sha256:" + "0" * 64,
+        )
+
+
+def test_run_config_rejects_bad_config_hash() -> None:
+    import pytest
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError, match="config_hash"):
+        RunConfig(
+            mode="deep", profile="quality", focus=None,
+            allow_broken=False, tensions_only=False,
+            resolved_models={},
+            run_nonce="abcdef",
+            config_hash="not-a-hash",
+        )

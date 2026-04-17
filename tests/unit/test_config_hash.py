@@ -45,3 +45,22 @@ def test_load_config_rejects_unknown_keys(tmp_path: Path) -> None:
     cfg.write_text(json.dumps({"profile": "quality", "unknown": "value"}))
     with pytest.raises(ValueError, match="unknown key"):
         load_config(cfg)
+
+
+def test_verify_success_returns_none(tmp_path: Path) -> None:
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"profile": "quality"}))
+    h = config_hash(cfg)
+    # Must not raise.
+    assert verify_config_hash(cfg, h) is None
+
+
+def test_load_config_rejects_too_deep(tmp_path: Path) -> None:
+    # Build {"a": {"a": {"a": ... 11 levels deep ... : "end"}}}.
+    nested: object = "end"
+    for _ in range(12):
+        nested = {"profile": nested}
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps(nested))
+    with pytest.raises(ValueError, match="depth"):
+        load_config(cfg)

@@ -23,3 +23,30 @@ def test_wrap_untrusted_emits_correct_tags() -> None:
 def test_untrusted_re_matches_wrapped_block() -> None:
     wrapped = wrap_untrusted("ADVISOR_OUTPUT_cassandra", "abc123", "finding")
     assert UNTRUSTED_RE.search(wrapped) is not None
+
+
+def test_untrusted_re_rejects_mismatched_nonce() -> None:
+    forged = "<<UNTRUSTED_KIND_aaaaaa>>body<<END_UNTRUSTED_KIND_bbbbbb>>"
+    assert UNTRUSTED_RE.search(forged) is None
+
+
+def test_untrusted_re_rejects_mismatched_kind() -> None:
+    forged = "<<UNTRUSTED_KINDA_aaaaaa>>body<<END_UNTRUSTED_KINDB_aaaaaa>>"
+    assert UNTRUSTED_RE.search(forged) is None
+
+
+def test_untrusted_re_matches_multiline_body() -> None:
+    wrapped = wrap_untrusted("PR_DIFF", "abc123", "line1\nline2\nline3")
+    assert UNTRUSTED_RE.search(wrapped) is not None
+
+
+def test_wrap_untrusted_rejects_bad_kind() -> None:
+    import pytest
+    with pytest.raises(ValueError, match="kind must match"):
+        wrap_untrusted("BAD>>INJECT", "abc123", "body")
+
+
+def test_wrap_untrusted_rejects_bad_nonce() -> None:
+    import pytest
+    with pytest.raises(ValueError, match="nonce must be 6 hex"):
+        wrap_untrusted("PR_DIFF", "XXXXXX", "body")

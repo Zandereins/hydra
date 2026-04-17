@@ -119,7 +119,7 @@ class StructuralContext(BaseModel):
 class SeedReport(BaseModel):
     schema_version: Literal["2.0"] = "2.0"
     generated_at: str
-    run_nonce: str
+    run_nonce: str = Field(pattern=r"^[0-9a-f]{6}$")
     tool_findings: list[ToolFinding] = Field(default_factory=list)
     echo_findings: list[AdvisorFinding] = Field(default_factory=list)
     navigator_findings: list[AdvisorFinding] = Field(default_factory=list)
@@ -144,8 +144,8 @@ class RunConfig(BaseModel):
     allow_broken: bool
     tensions_only: bool
     resolved_models: dict[str, str]
-    run_nonce: str
-    config_hash: str
+    run_nonce: str = Field(pattern=r"^[0-9a-f]{6}$")
+    config_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
 
 
 class GroundedFindings(BaseModel):

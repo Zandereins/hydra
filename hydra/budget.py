@@ -59,8 +59,8 @@ class Budget:
 
         with self._lock:
             projected = self.spent_usd + cost
-            if projected >= self.hard_cap_usd:
-                raise BudgetExceeded(projected, self.hard_cap_usd)
             if projected >= self.soft_cap_usd and not self.soft_cap_hit:
                 self.soft_cap_hit = True
+            if projected >= self.hard_cap_usd:
+                raise BudgetExceeded(projected, self.hard_cap_usd)
             self.spent_usd = projected
