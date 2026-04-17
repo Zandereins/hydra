@@ -1,6 +1,6 @@
 --- a/src/plugins/rate-limit.ts
 +++ b/src/plugins/rate-limit.ts
-@@ -11,12 +11,14 @@ import fp from "fastify-plugin";
+@@ -11,11 +11,14 @@ import fp from "fastify-plugin";
  export default fp(async function rateLimitPlugin(fastify) {
    const store = new RateLimitStore();
 

@@ -1,6 +1,6 @@
 --- a/src/auth/oauth-callback.ts
 +++ b/src/auth/oauth-callback.ts
-@@ -18,14 +18,14 @@ export function buildAuthorizationUrl(state: string, codeVerifier: string): str
+@@ -18,19 +18,16 @@ export function buildAuthorizationUrl(state: string, codeVerifier: string): str
    const params = new URLSearchParams({
      response_type: "code",
      client_id: config.clientId,

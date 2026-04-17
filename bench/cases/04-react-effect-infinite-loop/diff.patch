@@ -1,6 +1,6 @@
 --- a/src/components/ProductList.tsx
 +++ b/src/components/ProductList.tsx
-@@ -14,8 +14,18 @@ interface Props {
+@@ -14,6 +14,15 @@ interface Props {
  export function ProductList({ categoryId }: Props) {
    const [products, setProducts] = useState<Product[]>([]);
 

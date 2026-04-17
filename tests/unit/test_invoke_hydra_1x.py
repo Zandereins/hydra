@@ -1,13 +1,16 @@
 """Tests for bench/runner/invoke_hydra_1x.py — guards against harness pre-flight regressions."""
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bench.runner.invoke_hydra_1x import apply_diff, invoke_hydra
+from bench.runner import invoke_hydra_1x
+from bench.runner.invoke_hydra_1x import invoke_hydra
+from bench.runner.run_bench import CASES_DIR
 
 # ---------------------------------------------------------------------------
 # Bug 1: invoke_hydra must NOT pass --cwd to claude CLI
@@ -30,7 +33,7 @@ def test_invoke_hydra_argv_has_no_cwd_flag(tmp_path: Path) -> None:
 
 
 def test_invoke_hydra_uses_cwd_kwarg(tmp_path: Path) -> None:
-    """subprocess.run must receive cwd= so the child process runs in the worktree."""
+    """subprocess.run must receive cwd= so the child process runs in the workspace."""
     fake_report = tmp_path / ".hydra" / "reports" / "hydra-20260417-120000.md"
     fake_report.parent.mkdir(parents=True)
     fake_report.write_text("# report")
@@ -45,19 +48,102 @@ def test_invoke_hydra_uses_cwd_kwarg(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Bug 2: apply_diff must raise on non-zero returncode
+# prepare_case_workspace: missing workspace/ dir raises
 # ---------------------------------------------------------------------------
 
 
-def test_apply_diff_raises_on_failure(tmp_path: Path) -> None:
-    """A failed git-apply must not be silently swallowed — it wastes ~$0.60 per run."""
-    diff_path = tmp_path / "case.patch"
-    diff_path.write_text("--- /dev/null\n+++ /dev/null\n")
+def test_prepare_case_workspace_missing_workspace_dir_raises(tmp_path: Path) -> None:
+    """RuntimeError when a case has no workspace/ subdirectory."""
+    case_id = "99-no-such-case"
+    case_dir = tmp_path / case_id
+    case_dir.mkdir()
+    # No workspace/ subdir created
 
-    with patch("subprocess.run") as mock_run:
-        mock_run.side_effect = subprocess.CalledProcessError(
-            returncode=1,
-            cmd=["git", "apply"],
+    saved = invoke_hydra_1x.CASES_DIR  # type: ignore[attr-defined]
+    try:
+        invoke_hydra_1x.CASES_DIR = tmp_path  # type: ignore[attr-defined]
+        with pytest.raises(RuntimeError, match="no workspace"):
+            invoke_hydra_1x.prepare_case_workspace(case_id)
+    finally:
+        invoke_hydra_1x.CASES_DIR = saved  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# prepare_case_workspace: bogus diff raises RuntimeError
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_case_workspace_bad_diff_raises(tmp_path: Path) -> None:
+    """A workspace with an unapplicable diff must raise RuntimeError (not silently pass)."""
+    case_id = "test-bad-diff"
+    case_dir = tmp_path / case_id
+    workspace_dir = case_dir / "workspace"
+    workspace_dir.mkdir(parents=True)
+
+    src = workspace_dir / "src" / "foo.ts"
+    src.parent.mkdir(parents=True)
+    src.write_text("export const x = 1;\n")
+
+    # Diff references context lines that don't exist in the file
+    bad_patch = case_dir / "diff.patch"
+    bad_patch.write_text(
+        "--- a/src/foo.ts\n"
+        "+++ b/src/foo.ts\n"
+        "@@ -1,3 +1,4 @@\n"
+        " export const x = 1;\n"
+        " THIS_LINE_DOES_NOT_EXIST\n"
+        " NEITHER_DOES_THIS\n"
+        "+export const y = 2;\n"
+    )
+
+    saved = invoke_hydra_1x.CASES_DIR  # type: ignore[attr-defined]
+    try:
+        invoke_hydra_1x.CASES_DIR = tmp_path  # type: ignore[attr-defined]
+        with pytest.raises(RuntimeError, match="git apply failed"):
+            invoke_hydra_1x.prepare_case_workspace(case_id)
+    finally:
+        invoke_hydra_1x.CASES_DIR = saved  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# prepare_case_workspace: integration check — real case produces applied diff
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_case_workspace_real_case_applies_diff() -> None:
+    """Integration: prepare_case_workspace for a real case leaves diff applied (unstaged)."""
+    real_cases = sorted(p.name for p in CASES_DIR.iterdir() if (p / "workspace").is_dir())
+    if not real_cases:
+        pytest.skip("no real cases with workspace/ dirs found")
+
+    case_id = real_cases[0]
+    workspace = invoke_hydra_1x.prepare_case_workspace(case_id)
+    try:
+        assert workspace.is_dir(), "scratch dir must exist"
+
+        # The diff has been applied (working tree has unstaged changes)
+        result = subprocess.run(
+            ["git", "diff", "--name-only"],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            check=True,
         )
-        with pytest.raises((subprocess.CalledProcessError, RuntimeError)):
-            apply_diff(tmp_path, diff_path)
+        assert result.stdout.strip(), (
+            f"expected unstaged changes after diff apply for {case_id}, "
+            f"got empty diff output"
+        )
+
+        # HEAD commit must exist (base was committed)
+        log_result = subprocess.run(
+            ["git", "log", "--oneline", "-1"],
+            cwd=workspace,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "base" in log_result.stdout, (
+            f"expected 'base' commit in HEAD, got: {log_result.stdout!r}"
+        )
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
