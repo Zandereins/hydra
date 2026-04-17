@@ -29,20 +29,26 @@ def checkout_scratch(sha: str) -> Path:
 
 
 def apply_diff(worktree: Path, diff_path: Path) -> None:
-    subprocess.run(
-        ["git", "-C", str(worktree), "apply", "--3way", str(diff_path)],
-        check=False,
-    )
+    try:
+        subprocess.run(
+            ["git", "-C", str(worktree), "apply", "--3way", str(diff_path)],
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"git apply failed for diff {diff_path} in worktree {worktree}"
+        ) from exc
 
 
 def invoke_hydra(worktree: Path) -> Path:
     """Run Claude Code headless against the worktree, invoke `/hydra this`."""
     subprocess.run(
-        ["claude", "--print", "--cwd", str(worktree), "/hydra this"],
+        ["claude", "--print", "/hydra this"],
         check=True,
         capture_output=True,
         text=True,
         timeout=600,
+        cwd=str(worktree),
     )
     reports = sorted((worktree / ".hydra" / "reports").glob("hydra-*.md"))
     if not reports:
