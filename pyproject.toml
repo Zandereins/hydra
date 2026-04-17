@@ -37,9 +37,13 @@ addopts = "-ra --strict-markers"
 target-version = "py312"
 line-length = 100
 
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["hydra"]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
+packages = ["hydra"]
