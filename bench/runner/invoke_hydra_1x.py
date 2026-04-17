@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from bench.runner.extract_findings import extract_from_report
-from bench.runner.run_bench import CASES_DIR, run_single_case, write_baseline
+from bench.runner.run_bench import CASES_DIR, load_ground_truth, write_baseline
+from bench.runner.scoring import score_case
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HYDRA_1X_LABEL = "hydra-1.x@3506f93"
@@ -93,8 +94,7 @@ def main() -> None:
             candidates_out = REPO_ROOT / "bench" / "runs" / "1x" / f"{case_id}.jsonl"
             candidates_out.parent.mkdir(parents=True, exist_ok=True)
             candidates_out.write_text("\n".join(json.dumps(c) for c in candidates))
-            score = run_single_case(case_id, candidates_out)
-            scores_by_case[case_id] = score
+            scores_by_case[case_id] = score_case(load_ground_truth(case_id), candidates)
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
 

@@ -1,4 +1,4 @@
-"""Bench runner MVP. Full harness (LLM judge, median-of-3, cache-hit gate) in Task 36-37."""
+"""Bench runner — judge-free scoring + baseline writer (MVP; full harness deferred)."""
 from __future__ import annotations
 
 import argparse

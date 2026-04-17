@@ -16,10 +16,6 @@ def extract_from_report(markdown: str) -> list[dict[str, Any]]:
     frontmatter = yaml.safe_load(markdown[3:end])
     actions = frontmatter.get("top_actions", []) or []
 
-    def _to_class(severity: str) -> str:
-        # 1.x reports don't carry issue_class; always map to "other".
-        return "other"
-
     candidates: list[dict[str, Any]] = []
     for a in actions:
         candidates.append({
@@ -27,7 +23,8 @@ def extract_from_report(markdown: str) -> list[dict[str, Any]]:
             "file": a.get("file"),
             "lines": str(a.get("lines", "")),
             "severity": a.get("severity", "MODERATE"),
-            "issue_class": _to_class(a.get("severity", "")),
+            # 1.x reports don't carry issue_class — default to "other"
+            "issue_class": "other",
             "position": "CONCERN",
         })
     return candidates

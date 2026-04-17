@@ -12,10 +12,6 @@ from bench.runner import invoke_hydra_1x
 from bench.runner.invoke_hydra_1x import invoke_hydra
 from bench.runner.run_bench import CASES_DIR
 
-# ---------------------------------------------------------------------------
-# Bug 1: invoke_hydra must NOT pass --cwd to claude CLI
-# ---------------------------------------------------------------------------
-
 
 def test_invoke_hydra_argv_has_no_cwd_flag(tmp_path: Path) -> None:
     """--cwd is not a valid Claude Code CLI flag; subprocess cwd= must be used instead."""
@@ -47,11 +43,6 @@ def test_invoke_hydra_uses_cwd_kwarg(tmp_path: Path) -> None:
     assert call_kwargs["cwd"] == str(tmp_path)
 
 
-# ---------------------------------------------------------------------------
-# prepare_case_workspace: missing workspace/ dir raises
-# ---------------------------------------------------------------------------
-
-
 def test_prepare_case_workspace_missing_workspace_dir_raises(tmp_path: Path) -> None:
     """RuntimeError when a case has no workspace/ subdirectory."""
     case_id = "99-no-such-case"
@@ -66,11 +57,6 @@ def test_prepare_case_workspace_missing_workspace_dir_raises(tmp_path: Path) -> 
             invoke_hydra_1x.prepare_case_workspace(case_id)
     finally:
         invoke_hydra_1x.CASES_DIR = saved  # type: ignore[attr-defined]
-
-
-# ---------------------------------------------------------------------------
-# prepare_case_workspace: bogus diff raises RuntimeError
-# ---------------------------------------------------------------------------
 
 
 def test_prepare_case_workspace_bad_diff_raises(tmp_path: Path) -> None:
@@ -103,11 +89,6 @@ def test_prepare_case_workspace_bad_diff_raises(tmp_path: Path) -> None:
             invoke_hydra_1x.prepare_case_workspace(case_id)
     finally:
         invoke_hydra_1x.CASES_DIR = saved  # type: ignore[attr-defined]
-
-
-# ---------------------------------------------------------------------------
-# prepare_case_workspace: integration check — real case produces applied diff
-# ---------------------------------------------------------------------------
 
 
 def test_prepare_case_workspace_real_case_applies_diff() -> None:
