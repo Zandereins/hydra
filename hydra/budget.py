@@ -44,12 +44,18 @@ class Budget:
         price_cache_write_1h: float | None = None,
     ) -> None:
         cost = usage.input * price_in + usage.output * price_out
-        if price_cache_read is not None:
-            cost += usage.cache_read * price_cache_read
-        if price_cache_write_5m is not None:
-            cost += usage.cache_write_5m * price_cache_write_5m
-        if price_cache_write_1h is not None:
-            cost += usage.cache_write_1h * price_cache_write_1h
+        for field_name, tokens, price in (
+            ("cache_read", usage.cache_read, price_cache_read),
+            ("cache_write_5m", usage.cache_write_5m, price_cache_write_5m),
+            ("cache_write_1h", usage.cache_write_1h, price_cache_write_1h),
+        ):
+            if tokens > 0 and price is None:
+                raise ValueError(
+                    f"{field_name}={tokens} but {field_name} price is None; "
+                    f"pass price_{field_name} or zero the token count"
+                )
+            if price is not None:
+                cost += tokens * price
 
         with self._lock:
             projected = self.spent_usd + cost

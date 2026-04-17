@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 
 import pytest
 
@@ -44,3 +45,36 @@ def test_budget_exceeded_carries_context() -> None:
     except BudgetExceeded as exc:
         assert exc.max == 0.001
         assert exc.spent > 0.001
+
+
+def test_concurrent_charges_respect_lock_threads() -> None:
+    b = Budget(hard_cap_usd=1.00, soft_cap_usd=0.50)
+
+    def charge_once() -> None:
+        b.charge(TokenUsage(input=1000, output=100), price_in=3e-6, price_out=15e-6)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(charge_once) for _ in range(50)]
+        concurrent.futures.wait(futures)
+    # 50 × 0.0045 = 0.225 exactly — any race-induced double-count would miss
+    assert abs(b.spent_usd - 0.225) < 1e-9
+
+
+def test_cache_tokens_without_price_raises() -> None:
+    b = Budget(hard_cap_usd=1.00, soft_cap_usd=0.50)
+    usage = TokenUsage(input=100, output=10, cache_read=50_000)
+    with pytest.raises(ValueError, match="cache_read"):
+        b.charge(usage, price_in=3e-6, price_out=15e-6)
+
+
+def test_cache_tokens_with_price_are_charged() -> None:
+    b = Budget(hard_cap_usd=1.00, soft_cap_usd=0.50)
+    usage = TokenUsage(input=100, output=10, cache_read=50_000)
+    b.charge(
+        usage,
+        price_in=3e-6,
+        price_out=15e-6,
+        price_cache_read=0.3e-6,
+    )
+    expected = 100 * 3e-6 + 10 * 15e-6 + 50_000 * 0.3e-6
+    assert b.spent_usd == pytest.approx(expected)
