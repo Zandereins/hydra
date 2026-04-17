@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -54,7 +55,7 @@ def write_baseline(
             "median_recall": statistics.median(s.recall for s in scores),
             "median_precision": statistics.median(s.precision for s in scores),
             "median_critical_recall": statistics.median(s.critical_recall for s in scores),
-            "runs": [s.__dict__ for s in scores],
+            "runs": [asdict(s) for s in scores],
         }
         for case_id, scores in by_case.items()
     }

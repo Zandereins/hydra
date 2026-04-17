@@ -15,8 +15,10 @@ from bench.runner.run_bench import CASES_DIR, load_ground_truth, write_baseline
 from bench.runner.scoring import score_case
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-HYDRA_1X_LABEL = "hydra-1.x@3506f93"
-COMMIT_SHA = "3506f93"
+# Commit of Hydra 1.x to benchmark against. Override via HYDRA_1X_REF when
+# re-pinning 1.x — the baseline JSON `label` and `commit_sha` track this.
+COMMIT_SHA = os.environ.get("HYDRA_1X_REF", "3506f93")
+HYDRA_1X_LABEL = f"hydra-1.x@{COMMIT_SHA}"
 HYDRA_TIMEOUT_S = int(os.environ.get("HYDRA_TIMEOUT_S", "600"))
 
 

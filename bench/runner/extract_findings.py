@@ -5,6 +5,8 @@ from typing import Any
 
 import yaml
 
+from hydra.envelopes import IssueClass
+
 
 def extract_from_report(markdown: str) -> list[dict[str, Any]]:
     """Extract top_actions[] from report frontmatter as candidate findings."""
@@ -23,8 +25,8 @@ def extract_from_report(markdown: str) -> list[dict[str, Any]]:
             "file": a.get("file"),
             "lines": str(a.get("lines", "")),
             "severity": a.get("severity", "MODERATE"),
-            # 1.x reports don't carry issue_class — default to "other"
-            "issue_class": "other",
+            # 1.x reports don't carry issue_class — default to enum-canonical "other"
+            "issue_class": IssueClass.other.value,
             "position": "CONCERN",
         })
     return candidates
