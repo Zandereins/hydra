@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/check-codex-freshness.sh"
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/check-codex-freshness.sh"
           }
         ]
       }

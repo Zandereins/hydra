@@ -9,6 +9,7 @@ from hydra.envelopes import (
     RunConfig,
     SeedReport,
     Severity,
+    StructuralContext,
 )
 
 
@@ -36,7 +37,7 @@ def test_seed_report_byte_identical_serialization() -> None:
         tool_findings=[],
         echo_findings=[],
         navigator_findings=[],
-        structural_context={"file_tree": [], "boundaries": [], "import_observations": []},
+        structural_context=StructuralContext(file_tree=[], boundaries=[], import_observations=[]),
         skipped_tools=[],
         warnings=[],
     )

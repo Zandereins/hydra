@@ -10,7 +10,7 @@ def test_exact_match_full_recall() -> None:
         "issue_class": "auth_bypass",
         "mandatory": True,
     }]
-    candidates = [{
+    candidates: list[dict[str, object]] = [{
         "title": "Authorization header forwarded without check",
         "file": "src/a.ts",
         "lines": "14-28",
@@ -35,7 +35,7 @@ def test_missing_mandatory_zero_recall() -> None:
 def test_noise_drops_precision() -> None:
     gt = [{"title": "x", "file": "a.ts", "lines": "1-1", "severity": "SERIOUS",
            "issue_class": "auth_bypass", "mandatory": True}]
-    candidates = [
+    candidates: list[dict[str, object]] = [
         {"title": "x", "file": "a.ts", "lines": "1-1", "severity": "SERIOUS",
          "issue_class": "auth_bypass"},
         {"title": "irrelevant", "file": "b.ts", "lines": "5-5",
@@ -50,7 +50,7 @@ def test_noise_drops_precision() -> None:
 def test_range_overlap_still_matches() -> None:
     gt = [{"title": "x", "file": "a.ts", "lines": "14-28", "severity": "SERIOUS",
            "issue_class": "auth_bypass", "mandatory": True}]
-    candidates = [{"title": "x", "file": "a.ts", "lines": "20-32",
+    candidates: list[dict[str, object]] = [{"title": "x", "file": "a.ts", "lines": "20-32",
                    "severity": "SERIOUS", "issue_class": "auth_bypass",
                    "position": "CONCERN"}]
     result = score_case(gt, candidates, file_match_weight=1.0)

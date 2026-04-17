@@ -51,8 +51,8 @@ def test_verify_success_returns_none(tmp_path: Path) -> None:
     cfg = tmp_path / "config.json"
     cfg.write_text(json.dumps({"profile": "quality"}))
     h = config_hash(cfg)
-    # Must not raise.
-    assert verify_config_hash(cfg, h) is None
+    # Must not raise — verify_config_hash returns None on success.
+    verify_config_hash(cfg, h)
 
 
 def test_load_config_rejects_too_deep(tmp_path: Path) -> None:

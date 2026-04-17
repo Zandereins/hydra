@@ -17,7 +17,7 @@ if [[ ! -d "$PLUGIN_CACHE" ]]; then
   exit 0
 fi
 
-LATEST="$(find "$PLUGIN_CACHE" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort -r | head -n 1)"
+LATEST="$(find "$PLUGIN_CACHE" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort -Vr | head -n 1)"
 if [[ -z "$LATEST" ]]; then
   echo "⚠  Codex plugin cache at $PLUGIN_CACHE is empty." >&2
   exit 0

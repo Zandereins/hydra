@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess  # noqa: S404 — TODO(§18.4): route through run_tool once PATH handling is extended
 import tempfile
@@ -15,7 +16,7 @@ from bench.runner.run_bench import CASES_DIR, run_single_case, write_baseline
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HYDRA_1X_LABEL = "hydra-1.x@3506f93"
 COMMIT_SHA = "3506f93"
-HYDRA_TIMEOUT_S = 600
+HYDRA_TIMEOUT_S = int(os.environ.get("HYDRA_TIMEOUT_S", "600"))
 
 
 def prepare_case_workspace(case_id: str) -> Path:
