@@ -19,11 +19,13 @@ def contained_path(
 ) -> Path:
     """Resolve `user_path` against `repo_root`; raise PathEscapeError on escape.
 
-    Rules:
-      1. PATH_MAX: combined length must fit.
-      2. Absolute paths are rejected outright.
+    Rules (in code order):
+      1. Absolute paths are rejected outright.
+      2. PATH_MAX: combined length must fit.
       3. Resolved path must be relative to repo_root (symlinks followed).
-      4. If must_exist, resolution requires the target to exist.
+      4. If must_exist, resolution requires the target to exist
+         (FileNotFoundError propagates).
+      5. Null bytes / other malformed paths surface as PathEscapeError.
     """
     root = Path(repo_root).resolve(strict=True)
     candidate = Path(user_path)
@@ -37,11 +39,10 @@ def contained_path(
 
     try:
         resolved = combined.resolve(strict=must_exist)
-    except FileNotFoundError:
-        if must_exist:
-            raise
-        # Non-strict: resolve as best-effort (no symlink expansion past missing segments)
-        resolved = combined.resolve(strict=False)
+    except ValueError as exc:
+        # e.g. embedded null byte — not a FileNotFoundError, normalize to PathEscapeError
+        # so every callsite (Task 22 ground_finding etc.) catches a single exception type.
+        raise PathEscapeError(f"malformed path: {user_path!r}") from exc
 
     try:
         resolved.relative_to(root)
@@ -50,7 +51,9 @@ def contained_path(
             f"path escapes repo_root: {user_path!r} -> {resolved}"
         ) from exc
 
-    # Case-fold double-check for APFS / NTFS
+    # Belt-and-suspenders: resolve() already canonicalizes case on APFS/NTFS, so this
+    # check is normatively redundant after relative_to(). Kept as a paranoid tripwire
+    # in case a future refactor weakens one of the earlier guards.
     if os.path.normcase(str(resolved)).find(os.path.normcase(str(root))) != 0:
         raise PathEscapeError(f"case-fold escape: {user_path!r}")
 
