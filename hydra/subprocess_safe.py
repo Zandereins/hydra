@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -9,7 +10,11 @@ from pathlib import Path
 SHELL_METACHARS = re.compile(r"[;&|`$<>\n\r]")
 SAFE_FN = re.compile(r"^[A-Za-z0-9._/@:+=-]+$")
 ALLOWED_ENV_KEYS = {"PATH", "LANG", "HOME", "TMPDIR"}
-SCRUBBED_ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+SCRUBBED_ENV = {
+    "PATH": "/usr/bin:/bin",
+    "LANG": "C.UTF-8",
+    "HOME": os.environ.get("HOME", "/tmp"),
+}
 
 
 class UnsafeArgError(Exception):
@@ -20,6 +25,8 @@ def _validate_args(argv: list[str]) -> None:
     if not isinstance(argv, list):
         raise TypeError(f"argv must be list[str], got {type(argv).__name__}")
     for arg in argv:
+        if "\x00" in arg:
+            raise UnsafeArgError(f"null byte in arg: {arg!r}")
         if SHELL_METACHARS.search(arg):
             raise UnsafeArgError(f"shell metacharacter in arg: {arg!r}")
         if ("/" in arg or arg.startswith(".")) and not SAFE_FN.fullmatch(arg):
@@ -37,6 +44,8 @@ def run_tool(
     env = dict(SCRUBBED_ENV)
     if extra_env:
         for k, v in extra_env.items():
+            # HYDRA_* passthrough — callers must not forward user-controlled env keys here
+            # (names like HYDRA_LD_PRELOAD would reach the dynamic linker).
             if k in ALLOWED_ENV_KEYS or k.startswith("HYDRA_"):
                 env[k] = v
     try:

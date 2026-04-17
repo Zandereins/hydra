@@ -49,3 +49,54 @@ def test_safe_fn_regex_rejects_backticks(tmp_path: Path) -> None:
 def test_safe_fn_regex_rejects_dollar_paren(tmp_path: Path) -> None:
     with pytest.raises(UnsafeArgError):
         run_tool(["/bin/echo", "$(id)"], cwd=tmp_path, timeout=5)
+
+
+def test_rejects_null_byte(tmp_path: Path) -> None:
+    with pytest.raises(UnsafeArgError):
+        run_tool(["/bin/echo", "foo\x00bar"], cwd=tmp_path, timeout=5)
+
+
+def test_extra_env_non_allowlisted_key_dropped(
+    tmp_path: Path,
+) -> None:
+    # MALICIOUS_KEY is neither in ALLOWED_ENV_KEYS nor HYDRA_*-prefixed.
+    result = run_tool(
+        ["/usr/bin/env"],
+        cwd=tmp_path,
+        timeout=5,
+        extra_env={"MALICIOUS_KEY": "should-not-appear"},
+    )
+    assert "MALICIOUS_KEY" not in result.stdout
+    assert "should-not-appear" not in result.stdout
+
+
+def test_extra_env_hydra_prefix_passed_through(tmp_path: Path) -> None:
+    result = run_tool(
+        ["/usr/bin/env"],
+        cwd=tmp_path,
+        timeout=5,
+        extra_env={"HYDRA_SCAN_TARGET": "src/"},
+    )
+    assert "HYDRA_SCAN_TARGET=src/" in result.stdout
+
+
+def test_nonzero_exit_returns_rather_than_raises(tmp_path: Path) -> None:
+    # /bin/false always returns 1. run_tool uses check=False, so it must
+    # return a CompletedProcess rather than raise CalledProcessError.
+    result = run_tool(["/usr/bin/false"], cwd=tmp_path, timeout=5)
+    assert result.returncode != 0
+
+
+def test_stderr_captured_separately(tmp_path: Path) -> None:
+    script = tmp_path / "emit.py"
+    script.write_text(
+        "import sys\nprint('stdout-msg')\nprint('stderr-msg', file=sys.stderr)\n"
+    )
+    result = run_tool(
+        ["/usr/bin/python3", str(script)],
+        cwd=tmp_path,
+        timeout=5,
+    )
+    assert "stdout-msg" in result.stdout
+    assert "stderr-msg" in result.stderr
+    assert "stderr-msg" not in result.stdout
