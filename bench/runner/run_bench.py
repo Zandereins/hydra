@@ -6,7 +6,7 @@ import json
 import statistics
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -23,7 +23,7 @@ def load_ground_truth(case_id: str) -> list[dict[str, Any]]:
 
 
 def load_manifest(case_id: str) -> dict[str, Any]:
-    return yaml.safe_load((CASES_DIR / case_id / "manifest.yaml").read_text())
+    return cast(dict[str, Any], yaml.safe_load((CASES_DIR / case_id / "manifest.yaml").read_text()))
 
 
 def run_single_case(case_id: str, candidates_path: Path) -> CaseScore:
