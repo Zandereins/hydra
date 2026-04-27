@@ -247,9 +247,10 @@ def test_canonical_json_byte_snapshot() -> None:
         f"  actual:    {actual}\n"
         f"  bytes:     {sr.canonical_json()!r}\n"
         f"  excludes:  {sorted(_CANONICAL_EXCLUDE)}\n"
-        f"If you added a new SeedReport field, decide whether it is per-run "
-        f"volatile and add it to _CANONICAL_EXCLUDE in envelopes.py before "
-        f"updating this hash."
+        f"To update: paste the `actual` value above into `expected` in this "
+        f"test (tests/unit/test_envelopes.py). If you added a new SeedReport "
+        f"field that's per-run volatile (timestamp / request id / nonce), add "
+        f"it to _CANONICAL_EXCLUDE in envelopes.py BEFORE updating this hash."
     )
 
 

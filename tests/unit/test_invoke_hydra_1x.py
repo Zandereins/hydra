@@ -151,6 +151,15 @@ def test_validate_case_id_rejects_empty_and_self_ref() -> None:
             _validate_case_id(bad)
 
 
+def test_validate_case_id_rejects_nonexistent_case() -> None:
+    """D-5: a syntactically valid case_id that resolves inside CASES_DIR but
+    doesn't exist on disk hits the `is_dir()` branch — distinct from
+    traversal/absolute/self-ref. Common in production via `--cases typo`."""
+    from bench.runner.invoke_hydra_1x import _validate_case_id
+    with pytest.raises(RuntimeError, match="case directory does not exist"):
+        _validate_case_id("does-not-exist-xyz-12345")
+
+
 def test_validate_case_id_accepts_legitimate_case() -> None:
     """A real case under bench/cases/ resolves cleanly."""
     from bench.runner.invoke_hydra_1x import _validate_case_id

@@ -6,3 +6,8 @@ dist/
 build/
 .mypy_cache/
 .ruff_cache/
+.coverage
+.claude/scheduled_tasks.lock
+# Generated locally, not part of the published skill:
+social-preview.png
+docs/generate-social-preview.py
