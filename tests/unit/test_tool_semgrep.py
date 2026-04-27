@@ -209,3 +209,66 @@ def test_parse_semgrep_rejects_traversal_emitted_path(tmp_path: Path) -> None:
     }
     findings = parse_semgrep_json(raw, tmp_path)
     assert findings[0].file is None
+
+
+# ---------------------------------------------------------------------------
+# Iteration-1 follow-ups: S-N2 / S-N3 / A-F2
+# ---------------------------------------------------------------------------
+
+
+def test_validate_input_paths_warning_does_not_leak_resolved_target(
+    tmp_path: Path,
+) -> None:
+    """S-N2: PathEscapeError text contains the RESOLVED real path of a symlink
+    (e.g. ~/.ssh/id_rsa). That string would flow into SeedReport.warnings →
+    cached payload → Anthropic. Warning must contain only the user-supplied
+    raw input, never the resolved target.
+    """
+    from hydra.phase1.tools.semgrep import _validate_input_paths
+    secret_file = tmp_path / "secret-target-leaked.txt"
+    secret_file.write_text("never include this string in warnings")
+    scan_root = tmp_path / "scan"
+    scan_root.mkdir()
+    link = scan_root / "innocent.py"
+    link.symlink_to(secret_file)
+    valid, warnings = _validate_input_paths(scan_root, ["innocent.py"])
+    assert valid == [], "symlink to outside file should be rejected"
+    assert len(warnings) == 1
+    assert "innocent.py" in warnings[0], "user input must appear in warning"
+    assert "secret-target-leaked" not in warnings[0], (
+        f"resolved target leaked into warning: {warnings[0]!r}"
+    )
+
+
+def test_validate_input_paths_rejects_self_referential(tmp_path: Path) -> None:
+    """S-N3: empty / "." / "./." resolve to cwd itself; semgrep would then
+    recursively scan the entire repo (leaking .env, node_modules, etc.).
+    Reject explicitly, do NOT pass them to argv.
+    """
+    from hydra.phase1.tools.semgrep import _validate_input_paths
+    valid, warnings = _validate_input_paths(tmp_path, ["", ".", "./."])
+    assert valid == []
+    assert all("self-referential" in w for w in warnings)
+
+
+def test_validate_input_paths_dedupes(tmp_path: Path) -> None:
+    """S-N3: a path passed multiple times must only appear once in the
+    semgrep argv (otherwise findings are inflated by N×)."""
+    from hydra.phase1.tools.semgrep import _validate_input_paths
+    (tmp_path / "a.py").write_text("# x")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.py").write_text("# y")
+    valid, _ = _validate_input_paths(
+        tmp_path, ["a.py", "a.py", "./a.py", "sub/b.py", "sub/b.py"]
+    )
+    assert sorted(valid) == ["a.py", "sub/b.py"]
+
+
+def test_safe_relative_path_handles_missing_cwd(tmp_path: Path) -> None:
+    """A-F2: if cwd itself disappeared between scan start and result parse,
+    `contained_path` raises FileNotFoundError on root resolution. Helper
+    must catch and return None so parse_semgrep_json doesn't crash."""
+    from hydra.phase1.tools.semgrep import _safe_relative_path
+    gone = tmp_path / "removed-mid-scan"
+    # Don't create it — passing a non-existent root is the failure mode.
+    assert _safe_relative_path(gone, "x.py") is None

@@ -28,23 +28,21 @@ class ToolResult:
     warnings: list[str] = field(default_factory=list)
 
 
-def _safe_relative_path(cwd: Path, raw_path: str) -> str | None:
-    """Validate a semgrep-emitted path is inside cwd; return as relative or None.
+def _safe_relative_path(cwd_resolved: Path, raw_path: str) -> str | None:
+    """Return raw_path as path relative to cwd_resolved, or None on escape/missing.
 
-    A3-S7: semgrep can emit absolute paths (e.g., when scanning followed
-    symlinks) or paths that escape the scan root. Treating them as
-    `ToolFinding.file` would mislead downstream grounding/report code into
-    opening files outside the user's repo. Reject silently to None and let
-    the caller surface a warning if needed.
+    A3-S7: semgrep can emit absolute paths (e.g. via followed symlinks) or
+    paths that escape the scan root. A-F2: cwd itself may not exist (e.g.
+    workspace wiped mid-scan). Catch all three exception classes so the
+    "reject silently to None" contract advertised in the docstring holds.
     """
     try:
-        resolved = contained_path(cwd, raw_path, must_exist=False)
-    except PathEscapeError:
+        resolved = contained_path(cwd_resolved, raw_path, must_exist=False)
+    except (PathEscapeError, FileNotFoundError, OSError):
         return None
-    try:
-        return str(resolved.relative_to(cwd.resolve()))
-    except ValueError:
-        return None
+    # contained_path already checked relative_to and raises on escape, so
+    # this call cannot fail — drop the prior dead try/except (A-F6, C-1).
+    return str(resolved.relative_to(cwd_resolved))
 
 
 def parse_semgrep_json(raw: dict[str, Any], cwd: Path) -> list[ToolFinding]:
@@ -52,6 +50,7 @@ def parse_semgrep_json(raw: dict[str, Any], cwd: Path) -> list[ToolFinding]:
 
     `cwd` is the scan root; emitted paths are validated against it (A3-S7).
     """
+    cwd_resolved = cwd.resolve()  # Hoist: avoid resolving per-finding (F3).
     findings: list[ToolFinding] = []
     for r in raw.get("results", []):
         extra: dict[str, Any] = r.get("extra", {})
@@ -67,7 +66,8 @@ def parse_semgrep_json(raw: dict[str, Any], cwd: Path) -> list[ToolFinding]:
 
         raw_path = r.get("path")
         file_field: str | None = (
-            _safe_relative_path(cwd, raw_path) if isinstance(raw_path, str) else None
+            _safe_relative_path(cwd_resolved, raw_path)
+            if isinstance(raw_path, str) else None
         )
 
         findings.append(
@@ -85,26 +85,37 @@ def parse_semgrep_json(raw: dict[str, Any], cwd: Path) -> list[ToolFinding]:
 
 
 def _validate_input_paths(cwd: Path, changed_files: list[str]) -> tuple[list[str], list[str]]:
-    """Validate each input path is inside cwd. Return (valid_relpaths, warnings).
+    """Validate each input path is inside cwd. Return (deduped_relpaths, warnings).
 
     A3-S1: filenames like `--config=http://evil/r` or `src/../../../etc/passwd`
     pass `subprocess_safe._validate_args` (SHELL_METACHARS doesn't catch `=`,
     SAFE_FN allows `=` and `/`). Without `contained_path` validation, semgrep
     would either fetch a remote rule config or scan a file outside the repo.
+
+    S-N3: empty / "." resolves to cwd itself and would cause semgrep to
+    recursively scan the entire repo (leaking .env, node_modules, etc.).
+    Reject explicitly. Also dedupe — the same path passed twice would let
+    semgrep scan it twice and inflate findings.
+
+    S-N2: warnings carry only the user-supplied raw input, never the
+    PathEscapeError text (which contains the resolved real-path of
+    symlinks → would leak e.g. ~/.ssh/id_rsa to LLM via SeedReport.warnings).
     """
-    valid: list[str] = []
+    cwd_resolved = cwd.resolve()  # Hoist (F3).
+    valid: dict[str, None] = {}  # dict-as-ordered-set for dedup (S-N3).
     warnings: list[str] = []
     for f in changed_files:
         try:
-            resolved = contained_path(cwd, f, must_exist=True)
-        except (PathEscapeError, FileNotFoundError) as exc:
-            warnings.append(f"skipping unsafe/missing path {f!r}: {exc}")
+            resolved = contained_path(cwd_resolved, f, must_exist=True)
+        except (PathEscapeError, FileNotFoundError):
+            warnings.append(f"skipping unsafe/missing path {f!r}")  # no exc text (S-N2)
             continue
-        try:
-            valid.append(str(resolved.relative_to(cwd.resolve())))
-        except ValueError:  # pragma: no cover — contained_path guarantees this works
-            warnings.append(f"skipping path that escaped root after resolve: {f!r}")
-    return valid, warnings
+        if resolved == cwd_resolved:
+            warnings.append(f"skipping self-referential path (would scan whole repo): {f!r}")
+            continue
+        # contained_path already checked relative_to; drop dead try/except (A-F6, C-2).
+        valid[str(resolved.relative_to(cwd_resolved))] = None
+    return list(valid), warnings
 
 
 def run_semgrep(
