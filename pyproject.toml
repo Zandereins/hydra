@@ -25,8 +25,10 @@ bench = [
   "gitpython>=3.1.43",
 ]
 
-[project.scripts]
-hydra = "hydra.cli:main"
+# Re-enable when hydra/cli.py lands (plan Task 42).
+# `pip install -e .` succeeds today but `hydra` would fail at import.
+# [project.scripts]
+# hydra = "hydra.cli:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
