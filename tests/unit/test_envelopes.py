@@ -72,11 +72,6 @@ def test_advisor_finding_has_required_fields() -> None:
     assert f.is_tension is False
 
 
-def test_issue_class_unknown_normalizes_to_other() -> None:
-    assert IssueClass.normalize("made_up_class") == IssueClass.other
-    assert IssueClass.normalize("race_condition") == IssueClass.race_condition
-
-
 def test_run_config_rejects_bad_nonce() -> None:
     import pytest
     from pydantic import ValidationError

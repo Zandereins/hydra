@@ -4,5 +4,3 @@ __version__ = "2.0.0a0"
 # SCHEMA_VERSION mirrors the Literal in envelopes.SeedReport.schema_version.
 # pydantic Literal cannot reference this constant, so both must change together.
 SCHEMA_VERSION = "2.0"
-# STATE_SCHEMA_VERSION is consumed by hydra/report/state.py (Task 38 onward).
-STATE_SCHEMA_VERSION = "3.0"

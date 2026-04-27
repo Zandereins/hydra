@@ -67,13 +67,6 @@ class IssueClass(enum.StrEnum):
     test_quality = "test_quality"
     other = "other"
 
-    @classmethod
-    def normalize(cls, value: str) -> IssueClass:
-        try:
-            return cls(value)
-        except ValueError:
-            return cls.other
-
 
 class Chain(BaseModel):
     premise: str = ""
@@ -147,25 +140,10 @@ class RunConfig(BaseModel):
     run_nonce: str = Field(pattern=r"^[0-9a-f]{6}$")
     config_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
 
+# GroundedFindings, ChairmanInput, and ChairmanOutput envelopes will be
+# (re-)introduced with proper typed shapes (no list[dict[str, Any]] primitive
+# obsession) in the same commit that wires up the chairman runner — plan
+# Tasks 22 (grounding), 28 (tensions), and 33 (chairman). Do not pre-define
+# them as dict-shaped placeholders; that just hides the cache-stability and
+# injection-defense work behind false reassurance.
 
-class GroundedFindings(BaseModel):
-    findings: list[AdvisorFinding]
-    degradation_panel: list[dict[str, Any]] = Field(default_factory=list)
-    grounding_summary: dict[str, int] = Field(default_factory=dict)
-
-
-class ChairmanInput(BaseModel):
-    findings: list[AdvisorFinding]
-    tensions: list[dict[str, Any]]
-    degradation_panel: list[dict[str, Any]]
-    seed_report_summary: dict[str, Any]
-    run_config: RunConfig
-
-
-class ChairmanOutput(BaseModel):
-    verdict: Literal["APPROVE", "REQUEST_CHANGES", "CONCERN"]
-    confidence: int = Field(ge=0, le=100)
-    top_actions: list[dict[str, Any]]
-    tensions_section: str = ""
-    grounding_summary: str = ""
-    suspicious_verdict_banner: str | None = None

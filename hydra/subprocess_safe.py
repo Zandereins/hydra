@@ -1,7 +1,6 @@
 """Single subprocess entrypoint. Never call subprocess.run directly elsewhere."""
 from __future__ import annotations
 
-import asyncio
 import os
 import re
 import subprocess
@@ -63,13 +62,3 @@ def run_tool(
         raise TimeoutError(
             f"{argv[0]} exceeded {timeout}s timeout"
         ) from exc
-
-
-async def run_tool_async(
-    argv: list[str],
-    cwd: Path,
-    timeout: int = 120,
-    extra_env: dict[str, str] | None = None,
-) -> subprocess.CompletedProcess[str]:
-    """Async wrapper — runs run_tool in a thread (GIL releases during wait)."""
-    return await asyncio.to_thread(run_tool, argv, cwd, timeout, extra_env)

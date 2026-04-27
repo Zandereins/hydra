@@ -23,8 +23,3 @@ class SeedIdAssigner:
         _validate_source(source)
         self._counters[source] += 1
         return f"{PREFIXES[source]}-{self._counters[source]}"
-
-
-def assign_seed_id(source: str, n: int) -> str:
-    _validate_source(source)
-    return f"{PREFIXES[source]}-{n}"
