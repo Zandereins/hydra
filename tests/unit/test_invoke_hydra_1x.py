@@ -128,3 +128,27 @@ def test_prepare_case_workspace_real_case_applies_diff() -> None:
         )
     finally:
         shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_validate_case_id_rejects_traversal() -> None:
+    """A3-S5: --cases ../../tmp/evil must be rejected before any filesystem ops."""
+    from bench.runner.invoke_hydra_1x import _validate_case_id
+    with pytest.raises(RuntimeError, match="invalid case id"):
+        _validate_case_id("../../../tmp/evil")
+
+
+def test_validate_case_id_rejects_absolute_path() -> None:
+    from bench.runner.invoke_hydra_1x import _validate_case_id
+    with pytest.raises(RuntimeError, match="invalid case id"):
+        _validate_case_id("/etc/passwd")
+
+
+def test_validate_case_id_accepts_legitimate_case() -> None:
+    """A real case under bench/cases/ resolves cleanly."""
+    from bench.runner.invoke_hydra_1x import _validate_case_id
+    legit_cases = [p.name for p in CASES_DIR.iterdir() if p.is_dir()]
+    if not legit_cases:
+        pytest.skip("no bench cases on disk")
+    resolved = _validate_case_id(legit_cases[0])
+    assert resolved.is_dir()
+    assert resolved.parent == CASES_DIR.resolve()

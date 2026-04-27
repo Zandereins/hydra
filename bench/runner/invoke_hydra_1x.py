@@ -13,6 +13,7 @@ from typing import Any
 from bench.runner.extract_findings import extract_from_report
 from bench.runner.run_bench import CASES_DIR, load_ground_truth, write_baseline
 from bench.runner.scoring import score_case
+from hydra.path_safety import PathEscapeError, contained_path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # Commit of Hydra 1.x to benchmark against. Override via HYDRA_1X_REF when
@@ -22,13 +23,33 @@ HYDRA_1X_LABEL = f"hydra-1.x@{COMMIT_SHA}"
 HYDRA_TIMEOUT_S = int(os.environ.get("HYDRA_TIMEOUT_S", "600"))
 
 
+def _validate_case_id(case_id: str) -> Path:
+    """Resolve `case_id` to a directory inside CASES_DIR or raise.
+
+    Defends against `--cases ../../tmp/evil` path traversal — `Path / case_id`
+    would otherwise allow CASES_DIR escape. `contained_path` with
+    must_exist=False catches the escape via `relative_to` even for
+    non-existent paths (we then verify is_dir separately so a missing-case
+    error is distinguishable from an escape attempt). (A3-S5).
+    """
+    try:
+        resolved = contained_path(CASES_DIR, case_id, must_exist=False)
+    except PathEscapeError as exc:
+        raise RuntimeError(
+            f"invalid case id (must resolve inside {CASES_DIR}): {case_id!r}"
+        ) from exc
+    if not resolved.is_dir():
+        raise RuntimeError(f"case directory does not exist: {case_id!r}")
+    return resolved
+
+
 def prepare_case_workspace(case_id: str) -> Path:
     """Copy case workspace to tmpdir, git-init, commit base, apply diff.
 
     Returns path to the initialized scratch dir with the case diff applied
     in the working tree (uncommitted) — so Hydra 1.x sees the PR diff.
     """
-    case_dir = CASES_DIR / case_id
+    case_dir = _validate_case_id(case_id)
     workspace_src = case_dir / "workspace"
     if not workspace_src.is_dir():
         raise RuntimeError(f"no workspace/ dir for case {case_id}")
