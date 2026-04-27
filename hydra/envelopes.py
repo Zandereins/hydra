@@ -5,7 +5,7 @@ import enum
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Severity(enum.StrEnum):
@@ -85,6 +85,12 @@ class ToolFinding(BaseModel):
 
 
 class AdvisorFinding(BaseModel):
+    # extra='forbid' is the injection-defense boundary: an advisor (or a
+    # tampered cached envelope) producing extra JSON keys must fail validation
+    # loudly rather than be silently accepted and propagated through the
+    # cached chairman pipeline. Spec §4.3.1 + R1 compound (M2 + cache).
+    model_config = ConfigDict(extra="forbid")
+
     id: str
     title: str
     severity: Severity
@@ -109,7 +115,19 @@ class StructuralContext(BaseModel):
     import_observations: list[dict[str, Any]] = Field(default_factory=list)
 
 
+# Fields excluded from canonical_json — must stay byte-stable across runs
+# (spec §4.3.1 L210: "No timestamps / run_ids inside cached blocks").
+# generated_at is the only volatile field today; add new ones here as they
+# appear (e.g., per-run trace IDs). Typed as set[str] because pydantic's
+# `IncEx` does not accept frozenset (treat as conventionally immutable).
+_CANONICAL_EXCLUDE: set[str] = {"generated_at"}
+
+
 class SeedReport(BaseModel):
+    # extra='forbid' protects the cached payload (BP4) from key-smuggling
+    # injection. See AdvisorFinding for full rationale.
+    model_config = ConfigDict(extra="forbid")
+
     schema_version: Literal["2.0"] = "2.0"
     generated_at: str
     run_nonce: str = Field(pattern=r"^[0-9a-f]{6}$")
@@ -121,9 +139,14 @@ class SeedReport(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
     def canonical_json(self) -> bytes:
-        """Byte-identical JSON for cache-hygiene (BP4)."""
+        """Byte-identical JSON for cache-hygiene (BP4).
+
+        Excludes wall-clock fields per _CANONICAL_EXCLUDE so two runs with
+        identical logical content produce identical bytes (spec §4.3.1 L209-210,
+        cache-hit-rate ≥60% release-blocker per L216).
+        """
         return json.dumps(
-            self.model_dump(mode="json"),
+            self.model_dump(mode="json", exclude=_CANONICAL_EXCLUDE),
             sort_keys=True,
             ensure_ascii=False,
             separators=(",", ":"),
@@ -131,6 +154,10 @@ class SeedReport(BaseModel):
 
 
 class RunConfig(BaseModel):
+    # extra='forbid' — config_hash freeze must fail loudly if extra fields
+    # land in the config blob between mint and verify (P-13 TOCTOU defense).
+    model_config = ConfigDict(extra="forbid")
+
     mode: Literal["standard", "deep"]
     profile: Literal["quality", "balanced", "budget"]
     focus: Literal["security", "perf", "readability", "architecture", "reliability"] | None

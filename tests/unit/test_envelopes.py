@@ -113,10 +113,6 @@ def _make_seed_report(generated_at: str = "2026-01-01T00:00:00Z") -> SeedReport:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="A2-F9: generated_at currently inside canonical_json — fix in next commit",
-)
 def test_canonical_json_byte_stable_across_runs_with_different_timestamps() -> None:
     # Spec §4.3.1 L210: "No timestamps / run_ids inside cached blocks; put
     # them in uncached tail." Two SeedReports with identical logical content
@@ -156,3 +152,59 @@ def test_canonical_json_idempotent_on_repeated_call() -> None:
     # nondeterminism, not in the F9 timestamp issue.
     sr = _make_seed_report()
     assert sr.canonical_json() == sr.canonical_json()
+
+
+def test_canonical_json_excludes_generated_at_field() -> None:
+    # Defense-in-depth: explicitly assert the excluded field name is NOT in
+    # the canonical bytes, even as a substring. Prevents a future refactor
+    # that accidentally re-introduces the field via a different code path.
+    sr = _make_seed_report(generated_at="2026-04-27T11:42:00Z")
+    assert b"generated_at" not in sr.canonical_json()
+    assert b"2026-04-27" not in sr.canonical_json()
+
+
+def test_advisor_finding_rejects_unknown_keys() -> None:
+    # M2: extra='forbid' must reject keys that don't match the schema.
+    # Defends against advisor (or tampered cached envelope) injection of
+    # extra JSON fields that would silently propagate through chairman.
+    from pydantic import ValidationError
+    payload = {
+        "id": "C-1",
+        "title": "x",
+        "severity": "SERIOUS",
+        "evidence": "VERIFIED",
+        "position": "CONCERN",
+        "chain": {"premise": "", "execution_trace": "", "conclusion": ""},
+        "smuggled_key": "evil-payload",  # extra — must be rejected
+    }
+    with pytest.raises(ValidationError, match="smuggled_key|Extra"):
+        AdvisorFinding.model_validate(payload)
+
+
+def test_seed_report_rejects_unknown_keys() -> None:
+    from pydantic import ValidationError
+    payload = {
+        "schema_version": "2.0",
+        "generated_at": "2026-01-01T00:00:00Z",
+        "run_nonce": "abcdef",
+        "extra_field": "evil",
+    }
+    with pytest.raises(ValidationError, match="extra_field|Extra"):
+        SeedReport.model_validate(payload)
+
+
+def test_run_config_rejects_unknown_keys() -> None:
+    from pydantic import ValidationError
+    payload = {
+        "mode": "deep",
+        "profile": "quality",
+        "focus": None,
+        "allow_broken": False,
+        "tensions_only": False,
+        "resolved_models": {},
+        "run_nonce": "abcdef",
+        "config_hash": "sha256:" + "0" * 64,
+        "shadow_mode": True,  # extra — must be rejected
+    }
+    with pytest.raises(ValidationError, match="shadow_mode|Extra"):
+        RunConfig.model_validate(payload)
