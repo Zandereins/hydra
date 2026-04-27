@@ -124,9 +124,9 @@ class StructuralContext(BaseModel):
 # Fields excluded from canonical_json — must stay byte-stable across runs
 # (spec §4.3.1 L210: "No timestamps / run_ids inside cached blocks").
 # generated_at is the only volatile field today; add new ones here as they
-# appear (e.g., per-run trace IDs). Typed as set[str] because pydantic's
-# `IncEx` does not accept frozenset (treat as conventionally immutable).
-_CANONICAL_EXCLUDE: set[str] = {"generated_at"}
+# appear (e.g., per-run trace IDs). frozenset prevents accidental runtime
+# mutation that would silently change the cache key for the whole process.
+_CANONICAL_EXCLUDE: frozenset[str] = frozenset({"generated_at"})
 
 
 class SeedReport(BaseModel):
@@ -148,11 +148,16 @@ class SeedReport(BaseModel):
         """Byte-identical JSON for cache-hygiene (BP4).
 
         Excludes wall-clock fields per _CANONICAL_EXCLUDE so two runs with
-        identical logical content produce identical bytes (spec §4.3.1 L209-210,
-        cache-hit-rate ≥60% release-blocker per L216).
+        identical logical content produce identical bytes (spec §4.3.1 L210
+        "No timestamps / run_ids inside cached blocks", cache-hit-rate ≥60%
+        release-blocker per L216).
         """
+        # set() conversion: pydantic's IncEx static type rejects frozenset
+        # (runtime accepts it). Construct a fresh set from the immutable
+        # source on each call — the frozenset is the source of truth, the
+        # in-flight set is a typing concession.
         return json.dumps(
-            self.model_dump(mode="json", exclude=_CANONICAL_EXCLUDE),
+            self.model_dump(mode="json", exclude=set(_CANONICAL_EXCLUDE)),
             sort_keys=True,
             ensure_ascii=False,
             separators=(",", ":"),

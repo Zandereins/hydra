@@ -100,3 +100,33 @@ def test_stderr_captured_separately(tmp_path: Path) -> None:
     assert "stdout-msg" in result.stdout
     assert "stderr-msg" in result.stderr
     assert "stderr-msg" not in result.stdout
+
+
+def test_allowed_env_keys_is_immutable() -> None:
+    """S-N5: ALLOWED_ENV_KEYS must be frozen — adding DYLD_INSERT_LIBRARIES at
+    runtime would re-open the A3-S2 hole that's currently a verified false
+    positive."""
+    from hydra.subprocess_safe import ALLOWED_ENV_KEYS
+    with pytest.raises(AttributeError):
+        ALLOWED_ENV_KEYS.add("DYLD_INSERT_LIBRARIES")  # type: ignore[attr-defined]
+
+
+def test_base_scrubbed_env_is_immutable() -> None:
+    """S-N5: _BASE_SCRUBBED_ENV must be frozen via MappingProxyType."""
+    from hydra.subprocess_safe import _BASE_SCRUBBED_ENV
+    with pytest.raises(TypeError):
+        _BASE_SCRUBBED_ENV["DYLD_INSERT_LIBRARIES"] = "/evil.dylib"  # type: ignore[index]
+
+
+def test_run_tool_refreshes_home_each_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-N5: HOME must be re-read from os.environ each call, not cached at
+    module import time. Otherwise a HOME change in CI / test fixtures gives
+    a stale value to the child."""
+    monkeypatch.setenv("HOME", "/tmp/fake-home-1")
+    r1 = run_tool(["/usr/bin/env"], cwd=tmp_path, timeout=5)
+    assert "HOME=/tmp/fake-home-1" in r1.stdout
+    monkeypatch.setenv("HOME", "/tmp/fake-home-2")
+    r2 = run_tool(["/usr/bin/env"], cwd=tmp_path, timeout=5)
+    assert "HOME=/tmp/fake-home-2" in r2.stdout

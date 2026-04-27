@@ -146,6 +146,14 @@ def test_canonical_json_keys_sorted_under_kwargs_reorder() -> None:
     assert keys == sorted(keys), f"canonical_json keys not sorted: {keys}"
 
 
+def test_canonical_exclude_is_frozenset() -> None:
+    """S-N4: prevent runtime mutation that would silently change cache keys."""
+    from hydra.envelopes import _CANONICAL_EXCLUDE
+    assert isinstance(_CANONICAL_EXCLUDE, frozenset)
+    with pytest.raises(AttributeError):
+        _CANONICAL_EXCLUDE.add("smuggled_field")  # type: ignore[attr-defined]
+
+
 def test_canonical_json_idempotent_on_repeated_call() -> None:
     # Sanity check that two calls on the same object return identical bytes.
     # If this ever breaks, the bug is in `model_dump(mode='json')`
