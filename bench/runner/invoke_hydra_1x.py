@@ -24,20 +24,19 @@ HYDRA_TIMEOUT_S = int(os.environ.get("HYDRA_TIMEOUT_S", "600"))
 
 
 def _validate_case_id(case_id: str) -> Path:
-    """Resolve `case_id` to a directory inside CASES_DIR or raise.
-
-    Defends against `--cases ../../tmp/evil` path traversal — `Path / case_id`
-    would otherwise allow CASES_DIR escape. `contained_path` with
-    must_exist=False catches the escape via `relative_to` even for
-    non-existent paths (we then verify is_dir separately so a missing-case
-    error is distinguishable from an escape attempt). (A3-S5).
-    """
+    """Resolve case_id inside CASES_DIR; raise on traversal, missing, or self-ref (A3-S5)."""
     try:
         resolved = contained_path(CASES_DIR, case_id, must_exist=False)
     except PathEscapeError as exc:
         raise RuntimeError(
             f"invalid case id (must resolve inside {CASES_DIR}): {case_id!r}"
         ) from exc
+    # Reject "" / "." / "./." which all resolve to CASES_DIR itself: the caller
+    # expects a named subdirectory, not the parent. Without this guard
+    # `case_dir / "workspace"` would surface a confusing "no workspace/ dir"
+    # error for a contract violation that should fail loudly here.
+    if resolved == CASES_DIR.resolve():
+        raise RuntimeError(f"empty/self-referential case id rejected: {case_id!r}")
     if not resolved.is_dir():
         raise RuntimeError(f"case directory does not exist: {case_id!r}")
     return resolved
@@ -56,6 +55,14 @@ def prepare_case_workspace(case_id: str) -> Path:
 
     scratch = Path(tempfile.mkdtemp(prefix=f"hydra-case-{case_id}-"))
     shutil.copytree(workspace_src, scratch, dirs_exist_ok=True)
+
+    # Scrub any pre-existing .git/ before `git init` — workspace may ship
+    # malicious .git/hooks/post-commit (or pre-commit, etc.) that `shutil.copytree`
+    # preserves and `git init` does NOT overwrite. Without this, `git commit`
+    # below executes attacker code as the user. Live RCE verified pre-fix.
+    pre_git = scratch / ".git"
+    if pre_git.exists():
+        shutil.rmtree(pre_git)
 
     for argv in (
         ["git", "init", "-q"],

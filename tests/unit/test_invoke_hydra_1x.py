@@ -143,6 +143,14 @@ def test_validate_case_id_rejects_absolute_path() -> None:
         _validate_case_id("/etc/passwd")
 
 
+def test_validate_case_id_rejects_empty_and_self_ref() -> None:
+    """A-F1: empty/dot/dot-slash case_id resolves to CASES_DIR itself; reject loudly."""
+    from bench.runner.invoke_hydra_1x import _validate_case_id
+    for bad in ("", ".", "./."):
+        with pytest.raises(RuntimeError, match="empty/self-referential"):
+            _validate_case_id(bad)
+
+
 def test_validate_case_id_accepts_legitimate_case() -> None:
     """A real case under bench/cases/ resolves cleanly."""
     from bench.runner.invoke_hydra_1x import _validate_case_id
@@ -152,3 +160,48 @@ def test_validate_case_id_accepts_legitimate_case() -> None:
     resolved = _validate_case_id(legit_cases[0])
     assert resolved.is_dir()
     assert resolved.parent == CASES_DIR.resolve()
+
+
+def test_prepare_case_workspace_purges_malicious_git_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-N1: a bench case shipping .git/hooks/post-commit must NOT execute it.
+
+    Live exploit pre-fix: shutil.copytree preserved hooks; git init kept them;
+    git commit ran them. We verify the hook directory is purged before init.
+    """
+    from bench.runner import invoke_hydra_1x
+    fake_case = tmp_path / "fake-case"
+    workspace = fake_case / "workspace"
+    workspace.mkdir(parents=True)
+    (workspace / "hello.py").write_text("print('hi')\n")
+    hooks = workspace / ".git" / "hooks"
+    hooks.mkdir(parents=True)
+    sentinel = tmp_path / "PWNED-SENTINEL"
+    hook = hooks / "post-commit"
+    hook.write_text(f"#!/bin/sh\ntouch {sentinel}\n")
+    hook.chmod(0o755)
+    # Minimal valid patch so prepare_case_workspace runs to completion.
+    (fake_case / "diff.patch").write_text(
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@ -1 +1,2 @@\n"
+        " print('hi')\n"
+        "+# patched\n"
+    )
+
+    monkeypatch.setattr(invoke_hydra_1x, "CASES_DIR", tmp_path)
+    scratch: Path | None = None
+    try:
+        scratch = invoke_hydra_1x.prepare_case_workspace("fake-case")
+        assert not sentinel.exists(), (
+            "post-commit hook fired — .git scrub failed to prevent RCE"
+        )
+        # Belt-and-suspenders: confirm scrub happened by inspecting hooks dir.
+        # git init recreates a fresh hooks/ with .sample files only.
+        live_hooks = scratch / ".git" / "hooks" / "post-commit"
+        assert not live_hooks.exists(), "non-sample post-commit hook survived scrub"
+    finally:
+        if scratch is not None:
+            shutil.rmtree(scratch, ignore_errors=True)
