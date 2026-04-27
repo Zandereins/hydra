@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from hydra.envelopes import Severity, ToolFinding
+from hydra.path_safety import PathEscapeError, contained_path
 from hydra.subprocess_safe import run_tool
 
 _SEVERITY_MAP: dict[str, Severity] = {
@@ -27,8 +28,30 @@ class ToolResult:
     warnings: list[str] = field(default_factory=list)
 
 
-def parse_semgrep_json(raw: dict[str, Any]) -> list[ToolFinding]:
-    """Convert semgrep JSON output to ToolFinding list."""
+def _safe_relative_path(cwd: Path, raw_path: str) -> str | None:
+    """Validate a semgrep-emitted path is inside cwd; return as relative or None.
+
+    A3-S7: semgrep can emit absolute paths (e.g., when scanning followed
+    symlinks) or paths that escape the scan root. Treating them as
+    `ToolFinding.file` would mislead downstream grounding/report code into
+    opening files outside the user's repo. Reject silently to None and let
+    the caller surface a warning if needed.
+    """
+    try:
+        resolved = contained_path(cwd, raw_path, must_exist=False)
+    except PathEscapeError:
+        return None
+    try:
+        return str(resolved.relative_to(cwd.resolve()))
+    except ValueError:
+        return None
+
+
+def parse_semgrep_json(raw: dict[str, Any], cwd: Path) -> list[ToolFinding]:
+    """Convert semgrep JSON output to ToolFinding list.
+
+    `cwd` is the scan root; emitted paths are validated against it (A3-S7).
+    """
     findings: list[ToolFinding] = []
     for r in raw.get("results", []):
         extra: dict[str, Any] = r.get("extra", {})
@@ -42,18 +65,46 @@ def parse_semgrep_json(raw: dict[str, Any]) -> list[ToolFinding]:
         raw_msg: str = str(extra.get("message", ""))
         message = raw_msg[:_MESSAGE_CAP]
 
+        raw_path = r.get("path")
+        file_field: str | None = (
+            _safe_relative_path(cwd, raw_path) if isinstance(raw_path, str) else None
+        )
+
         findings.append(
             ToolFinding(
                 id=str(uuid.uuid4()),
                 source="semgrep",
                 rule_id=str(r.get("check_id", "")),
-                file=r.get("path") or None,
+                file=file_field,
                 lines=lines,
                 severity=severity,
                 message=message,
             )
         )
     return findings
+
+
+def _validate_input_paths(cwd: Path, changed_files: list[str]) -> tuple[list[str], list[str]]:
+    """Validate each input path is inside cwd. Return (valid_relpaths, warnings).
+
+    A3-S1: filenames like `--config=http://evil/r` or `src/../../../etc/passwd`
+    pass `subprocess_safe._validate_args` (SHELL_METACHARS doesn't catch `=`,
+    SAFE_FN allows `=` and `/`). Without `contained_path` validation, semgrep
+    would either fetch a remote rule config or scan a file outside the repo.
+    """
+    valid: list[str] = []
+    warnings: list[str] = []
+    for f in changed_files:
+        try:
+            resolved = contained_path(cwd, f, must_exist=True)
+        except (PathEscapeError, FileNotFoundError) as exc:
+            warnings.append(f"skipping unsafe/missing path {f!r}: {exc}")
+            continue
+        try:
+            valid.append(str(resolved.relative_to(cwd.resolve())))
+        except ValueError:  # pragma: no cover — contained_path guarantees this works
+            warnings.append(f"skipping path that escaped root after resolve: {f!r}")
+    return valid, warnings
 
 
 def run_semgrep(
@@ -69,7 +120,17 @@ def run_semgrep(
         result.warnings.append("semgrep binary not found — skipping")
         return result
 
-    argv = ["semgrep", "--json", "--config", "auto", *changed_files]
+    valid_paths, path_warnings = _validate_input_paths(cwd, changed_files)
+    result.warnings.extend(path_warnings)
+    if not valid_paths:
+        result.skipped = True
+        result.warnings.append("no valid paths to scan after containment check")
+        return result
+
+    # `--` separator: any validated path that happens to start with `-`
+    # (POSIX-legal filename) must be parsed by semgrep as a positional path,
+    # not as a flag. A3-S1 belt-and-suspenders.
+    argv = ["semgrep", "--json", "--config", "auto", "--", *valid_paths]
 
     try:
         proc = run_tool(argv, cwd=cwd, timeout=timeout)
@@ -93,5 +154,5 @@ def run_semgrep(
         result.warnings.append(f"JSON parse failed: {exc}")
         return result
 
-    result.findings = parse_semgrep_json(raw)
+    result.findings = parse_semgrep_json(raw, cwd)
     return result
