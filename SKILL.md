@@ -16,6 +16,13 @@ description: >
   'hydra explain', 'hydra details', 'hydra tensions', 'hydra blind-spots'.
 ---
 
+<!-- v2.0 in progress on branch feat/hydra-2.0-core. SKILL.md still describes
+     the v1.x runtime (3-advisor / Codex-companion design). The Python core in
+     hydra/ is being rebuilt; SKILL.md rewrite is scheduled for Phase 4 (Task 39
+     of docs/plans/2026-04-17-hydra-2.0-core.md). Until then, do NOT add new
+     v1.x-only detail here. New v2.0 design lives in
+     docs/specs/2026-04-17-hydra-2.0-core-design-v2.md. -->
+
 # Hydra
 
 Three advisors analyze your code from different angles by default (standard mode).
