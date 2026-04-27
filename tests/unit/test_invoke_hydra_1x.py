@@ -171,6 +171,42 @@ def test_validate_case_id_accepts_legitimate_case() -> None:
     assert resolved.parent == CASES_DIR.resolve()
 
 
+def test_prepare_case_workspace_handles_git_as_file_gitlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Iteration-2 F1: a bench case shipping `workspace/.git` as a regular file
+    (a valid git "gitlink" pointing to an external gitdir) used to crash
+    prepare_case_workspace with NotADirectoryError because `shutil.rmtree`
+    requires a directory. Now scrubs files/symlinks via unlink(), dirs via
+    rmtree(); workspace then proceeds to `git init` cleanly.
+    """
+    from bench.runner import invoke_hydra_1x
+    fake_case = tmp_path / "fake-case"
+    workspace = fake_case / "workspace"
+    workspace.mkdir(parents=True)
+    (workspace / "hello.py").write_text("print('hi')\n")
+    # gitlink: a file at .git pointing to an external gitdir (legit git feature
+    # used by submodules and worktrees). Path doesn't have to exist.
+    (workspace / ".git").write_text("gitdir: /tmp/some-external-gitdir\n")
+    (fake_case / "diff.patch").write_text(
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@ -1 +1,2 @@\n"
+        " print('hi')\n"
+        "+# patched\n"
+    )
+    monkeypatch.setattr(invoke_hydra_1x, "CASES_DIR", tmp_path)
+    scratch: Path | None = None
+    try:
+        scratch = invoke_hydra_1x.prepare_case_workspace("fake-case")
+        # Real .git/ now exists from `git init`; gitlink file replaced by dir.
+        assert (scratch / ".git").is_dir()
+    finally:
+        if scratch is not None:
+            shutil.rmtree(scratch, ignore_errors=True)
+
+
 def test_prepare_case_workspace_purges_malicious_git_hooks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -60,8 +60,11 @@ def prepare_case_workspace(case_id: str) -> Path:
     # malicious .git/hooks/post-commit (or pre-commit, etc.) that `shutil.copytree`
     # preserves and `git init` does NOT overwrite. Without this, `git commit`
     # below executes attacker code as the user. Live RCE verified pre-fix.
+    # Handle .git as directory, file (gitlink), or symlink — Iteration-2 F1.
     pre_git = scratch / ".git"
-    if pre_git.exists():
+    if pre_git.is_symlink() or pre_git.is_file():
+        pre_git.unlink()
+    elif pre_git.is_dir():
         shutil.rmtree(pre_git)
 
     for argv in (
