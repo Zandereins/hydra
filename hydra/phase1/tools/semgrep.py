@@ -102,7 +102,12 @@ def _validate_input_paths(cwd: Path, changed_files: list[str]) -> tuple[list[str
     symlinks → would leak e.g. ~/.ssh/id_rsa to LLM via SeedReport.warnings).
     """
     cwd_resolved = cwd.resolve()  # Hoist (F3).
-    valid: dict[str, None] = {}  # dict-as-ordered-set for dedup (S-N3).
+    # Dedup by (st_dev, st_ino): inode is the canonical "same file" signal,
+    # works for case-insensitive filesystems (APFS, NTFS) where `A.py` and
+    # `a.py` are the same physical file (Iteration-2 F2). os.path.normcase
+    # is platform-dependent (no-op on Unix/macOS — wouldn't dedup APFS).
+    # Plus catches symlinks pointing to the same target.
+    by_inode: dict[tuple[int, int], str] = {}
     warnings: list[str] = []
     for f in changed_files:
         try:
@@ -114,8 +119,9 @@ def _validate_input_paths(cwd: Path, changed_files: list[str]) -> tuple[list[str
             warnings.append(f"skipping self-referential path (would scan whole repo): {f!r}")
             continue
         # contained_path already checked relative_to; drop dead try/except (A-F6, C-2).
-        valid[str(resolved.relative_to(cwd_resolved))] = None
-    return list(valid), warnings
+        st = resolved.stat()
+        by_inode.setdefault((st.st_dev, st.st_ino), str(resolved.relative_to(cwd_resolved)))
+    return list(by_inode.values()), warnings
 
 
 def run_semgrep(

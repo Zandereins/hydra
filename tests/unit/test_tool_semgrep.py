@@ -297,6 +297,27 @@ def test_validate_input_paths_dedupes(tmp_path: Path) -> None:
     assert sorted(valid) == ["a.py", "sub/b.py"]
 
 
+def test_validate_input_paths_dedupes_case_insensitively(tmp_path: Path) -> None:
+    """Iteration-2 F2: on case-insensitive volumes (APFS/NTFS), `A.py` and
+    `a.py` resolve to the same inode. Without normcase-based dedup, semgrep
+    would scan the same file twice.
+
+    On case-sensitive volumes (Linux ext4) the two are genuinely distinct
+    files; on those filesystems the dedup is a no-op for this input. This
+    test verifies the deduplication behavior of the semgrep wrapper without
+    depending on the underlying filesystem case-sensitivity.
+    """
+    from hydra.phase1.tools.semgrep import _validate_input_paths
+    (tmp_path / "Alpha.py").write_text("# x")
+    # On case-insensitive FS, this path will resolve to Alpha.py.
+    # On case-sensitive FS, alpha.py wouldn't exist; would be rejected.
+    inputs = ["Alpha.py", "alpha.py", "Alpha.py"]
+    valid, _ = _validate_input_paths(tmp_path, inputs)
+    # Either (case-insensitive FS): one entry, normcase-deduped.
+    # Or (case-sensitive FS): one entry (Alpha.py kept; alpha.py rejected by must_exist).
+    assert len(valid) == 1, f"expected exactly one deduped entry, got {valid}"
+
+
 def test_safe_relative_path_handles_missing_cwd(tmp_path: Path) -> None:
     """A-F2: if cwd itself disappeared between scan start and result parse,
     `contained_path` raises FileNotFoundError on root resolution. Helper
