@@ -135,12 +135,12 @@ def test_run_semgrep_rejects_traversal_in_changed_files(
     assert captured_argv == [], "semgrep must not be invoked when all paths fail validation"
 
 
-def test_run_semgrep_rejects_option_lookalike_filename(
+def test_run_semgrep_rejects_option_lookalike_filename_when_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A3-S1: a file literally named --config=evil must not reach argv as a flag."""
+    """A3-S1 (path 1): an option-lookalike string for a non-existent file is
+    rejected by must_exist=True before reaching argv."""
     monkeypatch.setattr("shutil.which", lambda _: "/usr/local/bin/semgrep")
-    # File doesn't exist on disk → path validation rejects it (must_exist=True).
     captured_argv: list[list[str]] = []
 
     def fake_run_tool(argv: list[str], **_k: object) -> SimpleNamespace:
@@ -150,7 +150,40 @@ def test_run_semgrep_rejects_option_lookalike_filename(
     monkeypatch.setattr("hydra.phase1.tools.semgrep.run_tool", fake_run_tool)
     result = run_semgrep(tmp_path, changed_files=["--config=http://evil/r"])
     assert result.skipped is True
-    assert captured_argv == [], "semgrep must not see --config-lookalike argv"
+    assert captured_argv == [], "semgrep must not see missing-file argv"
+
+
+def test_run_semgrep_dash_dash_neutralises_option_lookalike_real_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A3-S1 (path 2): if an attacker DOES create a file literally named
+    --config=evil inside cwd, it passes path validation (must_exist=True
+    succeeds), so the `--` separator is the actual remaining defense.
+    Verify the realised argv places the lookalike AFTER `--` so semgrep
+    parses it positionally, not as a flag."""
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/local/bin/semgrep")
+    # POSIX-legal filename starting with `--` — actually create it on disk.
+    evil_name = "--config=evil"
+    (tmp_path / evil_name).write_text("# fixture")
+    captured_argv: list[list[str]] = []
+
+    def fake_run_tool(argv: list[str], **_k: object) -> SimpleNamespace:
+        captured_argv.append(argv)
+        return SimpleNamespace(returncode=0, stdout='{"results":[]}', stderr="")
+
+    monkeypatch.setattr("hydra.phase1.tools.semgrep.run_tool", fake_run_tool)
+    run_semgrep(tmp_path, changed_files=[evil_name])
+    assert len(captured_argv) == 1
+    argv = captured_argv[0]
+    assert "--" in argv, f"-- separator missing: {argv}"
+    sep_idx = argv.index("--")
+    assert evil_name in argv[sep_idx + 1 :], (
+        f"option-lookalike must be AFTER --, got argv={argv}"
+    )
+    # Belt-and-suspenders: the lookalike must NOT appear before --
+    assert evil_name not in argv[: sep_idx], (
+        f"option-lookalike leaked before --: {argv[:sep_idx]}"
+    )
 
 
 def test_run_semgrep_argv_inserts_dash_dash_separator(

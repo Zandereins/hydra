@@ -238,13 +238,15 @@ def test_canonical_json_byte_snapshot() -> None:
         skipped_tools=[],
         warnings=[],
     )
+    from hydra.envelopes import _CANONICAL_EXCLUDE
     actual = hashlib.sha256(sr.canonical_json()).hexdigest()
     expected = "00cf490b07e3a23893d1903f7af11e7033188a48d7a6aae309784c69997f1e5f"
     assert actual == expected, (
         f"canonical_json byte snapshot changed.\n"
-        f"  expected: {expected}\n"
-        f"  actual:   {actual}\n"
-        f"  bytes:    {sr.canonical_json()!r}\n"
+        f"  expected:  {expected}\n"
+        f"  actual:    {actual}\n"
+        f"  bytes:     {sr.canonical_json()!r}\n"
+        f"  excludes:  {sorted(_CANONICAL_EXCLUDE)}\n"
         f"If you added a new SeedReport field, decide whether it is per-run "
         f"volatile and add it to _CANONICAL_EXCLUDE in envelopes.py before "
         f"updating this hash."
