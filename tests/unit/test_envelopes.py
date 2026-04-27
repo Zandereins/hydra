@@ -193,6 +193,56 @@ def test_seed_report_rejects_unknown_keys() -> None:
         SeedReport.model_validate(payload)
 
 
+def test_chain_rejects_unknown_keys() -> None:
+    # V2 follow-up: pydantic's extra='forbid' on AdvisorFinding does NOT
+    # propagate to nested Chain. Without forbid on Chain itself, an attacker
+    # controlling cached AdvisorFinding JSON could smuggle keys via
+    # {"chain":{...,"smuggled":"x"}} and have them silently accepted.
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError, match="smuggled|Extra"):
+        Chain.model_validate({
+            "premise": "p", "execution_trace": "e", "conclusion": "c",
+            "smuggled": "evil",
+        })
+
+
+def test_canonical_json_byte_snapshot() -> None:
+    # V2 follow-up — regression guard against forgetting to add a newly added
+    # volatile field to _CANONICAL_EXCLUDE. Golden bytes-hash for a fixed
+    # SeedReport shape; ANY change to canonical_json (new field, removed
+    # field, type change, sort_keys drop, generated_at re-included) flips
+    # this hash and forces a deliberate update gesture.
+    #
+    # When this test fails: (1) examine the diff for intent, (2) if a new
+    # field is per-run volatile (timestamp / request id / nonce), add it to
+    # _CANONICAL_EXCLUDE in envelopes.py BEFORE updating this hash; (3)
+    # otherwise update the hash with the new value.
+    import hashlib
+
+    sr = SeedReport(
+        schema_version="2.0",
+        generated_at="2026-04-27T11:42:00Z",  # MUST be excluded from canonical
+        run_nonce="deadbe",
+        tool_findings=[],
+        echo_findings=[],
+        navigator_findings=[],
+        structural_context=StructuralContext(),
+        skipped_tools=[],
+        warnings=[],
+    )
+    actual = hashlib.sha256(sr.canonical_json()).hexdigest()
+    expected = "00cf490b07e3a23893d1903f7af11e7033188a48d7a6aae309784c69997f1e5f"
+    assert actual == expected, (
+        f"canonical_json byte snapshot changed.\n"
+        f"  expected: {expected}\n"
+        f"  actual:   {actual}\n"
+        f"  bytes:    {sr.canonical_json()!r}\n"
+        f"If you added a new SeedReport field, decide whether it is per-run "
+        f"volatile and add it to _CANONICAL_EXCLUDE in envelopes.py before "
+        f"updating this hash."
+    )
+
+
 def test_run_config_rejects_unknown_keys() -> None:
     from pydantic import ValidationError
     payload = {

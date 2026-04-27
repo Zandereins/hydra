@@ -69,6 +69,12 @@ class IssueClass(enum.StrEnum):
 
 
 class Chain(BaseModel):
+    # extra='forbid' on the nested chain shape too: pydantic does NOT propagate
+    # the AdvisorFinding-level forbid to nested models, so without this, a
+    # cached AdvisorFinding could smuggle keys via {"chain":{...,"smuggled":"x"}}.
+    # Three-field closed schema — no legitimate reason to accept extras.
+    model_config = ConfigDict(extra="forbid")
+
     premise: str = ""
     execution_trace: str = ""
     conclusion: str = ""
