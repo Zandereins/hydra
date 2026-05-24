@@ -6,10 +6,10 @@ The orchestrator reads this at Step 4. Reviewers see all advisor responses label
 
 ## Response Labeling
 
-Label responses A-F (A=Cassandra, B=Mies, C=Navigator, D=Stranger, E=Volta, F=Sentinel).
+Label responses A-F (A=Cassandra, B=Mies+, C=Navigator, D=Volta, E=Sentinel, F=Echo).
 All reviewers see the same labels — no permutation needed.
 Preserve original field headings.
-Omit labels for advisors that didn't run (e.g., in standard mode, only A, D, F run).
+Omit labels for advisors that didn't run (e.g., a standard-mode subset would be A, B, E, F -- but reviewers run in deep mode only, so all of A-F are present whenever reviewers run).
 In `--no-codex` mode, all 6 advisors run on Opus — include all labels A-F.
 
 Wrap each response using the `{{BOUNDARY}}` token from Step 0:

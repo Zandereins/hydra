@@ -4,11 +4,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Claude Code Skill](https://img.shields.io/badge/Claude%20Code-Skill-D97757)](https://docs.anthropic.com/en/docs/claude-code/skills)
-[![Agents](https://img.shields.io/badge/Agents-4_to_10-blue)](#modes)
+[![Agents](https://img.shields.io/badge/Agents-5_to_10-blue)](#modes)
 
 Three engineers reviewed this code. Hydra caught what they missed -- twice, from two models that never talked to each other.
 
-Three advisors review your code by default (standard mode). Escalate to deep mode
+Four advisors review your code by default (standard mode). Escalate to deep mode
 for six specialists, three cross-examining reviewers, and cross-model diversity.
 Inspired by [Karpathy's LLM Council](https://github.com/karpathy/llm-council) --
 same principle (independent perspectives, cross-examination, synthesis), adapted
@@ -27,7 +27,7 @@ for specialist code review with cross-model diversity (Claude Opus + OpenAI Code
 The middleware correctly centralizes auth checks, but the refresh token
 flow has a race condition under concurrent requests -- Cassandra and
 Sentinel (cross-model consensus) both flagged this independently.
-Mies identified two abstraction layers that can be collapsed.
+Mies+ identified two abstraction layers that can be collapsed.
 
 **Top Actions:**
 1. [C-1, S-3] Add mutex around token refresh in auth/middleware.ts:47-62 [effort: small]
@@ -35,8 +35,8 @@ Mies identified two abstraction layers that can be collapsed.
 3. [C-2] Add integration test for concurrent refresh scenario [effort: medium]
 
 **Key Tensions:**
-- Navigator vs Mies on separating auth/authz modules (Stranger sided
-  with Mies -- cross-model). Ruling: keep combined until second consumer exists.
+- Navigator vs Mies+ on separating auth/authz modules. Ruling: keep combined
+  until a second consumer exists.
 
 Full report: .hydra/reports/hydra-20260331T144523-auth-middleware-refactor.md
 ```
@@ -55,10 +55,10 @@ graph TD
     B --> C[Frame Question]
 
     C --> D1[Cassandra -- Opus]
-    C --> D2[Mies -- Opus]
-    C --> D3[Navigator -- Opus]
-    C --> D4[Volta -- Opus]
-    C --> D5[Stranger -- Codex]
+    C --> D2[Navigator -- Opus]
+    C --> D3[Volta -- Opus]
+    C --> D4[Echo -- Opus]
+    C --> D5[Mies+ -- Codex]
     C --> D6[Sentinel -- Codex]
 
     subgraph "Advisors -- parallel, independent"
@@ -92,7 +92,7 @@ graph TD
     G -. hydra iterate .-> B
 ```
 
-In standard mode (default), three advisors analyze independently and a chairman synthesizes a verdict. In deep mode, six advisors run (four Opus in parallel, two Codex sequentially), then three reviewers cross-examine all outputs (no advisor sees another's work, but every reviewer sees everything), then the chairman synthesizes. After fixes, `hydra iterate` re-enters the pipeline in standard mode, producing a delta of what changed. Costs and agent counts are summarised in the [Modes](#modes) table below.
+In standard mode (default), four advisors analyze independently and a chairman synthesizes a verdict. In deep mode, six advisors run (four Opus in parallel, two Codex sequentially), then three reviewers cross-examine all outputs (no advisor sees another's work, but every reviewer sees everything), then the chairman synthesizes. After fixes, `hydra iterate` re-enters the pipeline in standard mode, producing a delta of what changed. Costs and agent counts are summarised in the [Modes](#modes) table below.
 
 ---
 
@@ -121,26 +121,26 @@ cross-model analysis, runs sequentially alongside Opus advisors)
 
 ## The Advisors
 
-Standard mode uses 3 advisors (Cassandra, Stranger, Sentinel). Deep mode adds
-Mies, Navigator, and Volta for the full 6. Four run on Claude Opus,
-two on OpenAI Codex -- different model, different blind spots. When Opus and Codex
+Standard mode uses 4 advisors (Cassandra, Mies+, Sentinel, Echo), all on Claude Opus.
+Deep mode adds Navigator and Volta for the full 6 and runs two of them (Mies+, Sentinel)
+on OpenAI Codex -- different model, different blind spots. When Opus and Codex
 independently agree, that's the strongest signal. When they disagree, that's the
 highest-value finding.
 
 Each finding gets a unique ID (e.g., C-1 for Cassandra's first finding, M-2 for
-Mies's second). Top Actions reference these IDs so you can trace any recommendation
+Mies+'s second). Top Actions reference these IDs so you can trace any recommendation
 back to the advisor who raised it.
 
 | # | Name | Model | Core Question |
 |---|------|-------|---------------|
 | 1 | Cassandra | Opus | "How does this break at 3am?" -- compound failures, unguarded assumptions |
-| 2 | Mies | Opus | "What can be deleted?" -- dead code, over-engineering |
+| 2 | Mies+ | Codex | "What can be removed, and can a stranger follow it?" -- dead code, over-engineering, readability |
 | 3 | Navigator | Opus | "What depends on what?" -- coupling, boundary violations |
 | 4 | Volta | Opus | "What does this cost at 10x load?" -- N+1 queries, invisible costs |
-| 5 | The Stranger | Codex | "Can a stranger understand this in 15 min?" -- naming, cognitive load |
-| 6 | Sentinel | Codex | "How do I break this on purpose?" -- auth gaps, injection, race conditions |
+| 5 | Sentinel | Codex | "How do I break this on purpose?" -- auth gaps, injection, race conditions |
+| 6 | Echo | Opus | "What did the AI get wrong?" -- phantom code, fake tests, plan-vs-diff drift |
 
-The Stranger uses a few-shot prompt format for Codex compatibility. Top Actions
+Mies+ uses a few-shot prompt format for Codex compatibility (deep mode). Top Actions
 include effort tags (`[effort: trivial]`, `[effort: small]`, `[effort: medium]`,
 `[effort: large]`) ranked by the Effort-Risk Ranker reviewer.
 
@@ -154,7 +154,7 @@ verdict.
 
 | Mode | CLI | Agents | Est. Cost |
 |------|-----|--------|-----------|
-| **standard** *(default)* | -- | 4 (3 advisors + chairman) | around $0.25-0.50 |
+| **standard** *(default)* | -- | 5 (4 advisors + chairman) | around $0.35-0.65 |
 | **deep** | `--mode deep` | 10 (6 advisors + 3 reviewers + chairman) | around $1.50-2.50 |
 
 **Modifiers** (combinable with either mode):
@@ -162,7 +162,7 @@ verdict.
 - `--no-review` -- skip peer review (only meaningful with deep, reduces to 7 agents, around $1.00)
 - `--transcript` -- save raw agent outputs separately
 
-**Focus flags:** `--focus security|perf|readability|architecture|reliability` -- gives the primary advisor 2x word budget. Mapping: security to Sentinel, perf to Volta, readability to Stranger, architecture to Navigator, reliability to Cassandra. Flags for `perf` and `architecture` auto-escalate to deep mode (those advisors only exist in deep).
+**Focus flags:** `--focus security|perf|readability|architecture|reliability` -- gives the primary advisor 2x word budget. Mapping: security to Sentinel, perf to Volta, readability to Mies+, architecture to Navigator, reliability to Cassandra. Flags for `perf` and `architecture` auto-escalate to deep mode (those advisors only exist in deep).
 
 Costs are API calls to Claude and Codex, charged to your own accounts. Hydra always
 shows the estimate and asks before running.
@@ -227,19 +227,20 @@ Triggers: `hydra iterate`, `hydra re-review`, `hydra follow-up`, `check my fixes
 
 ## Privacy
 
-In both modes, your code is sent to both Anthropic (Claude Opus) and OpenAI
-(Codex GPT-5.4). Use `--no-codex` to keep everything Anthropic-only. Hydra shows
-which providers receive your code and asks for confirmation before any agents run.
+In deep mode, your code is sent to both Anthropic (Claude Opus) and OpenAI
+(Codex GPT-5.4); standard mode is Opus-only (Anthropic only). Use `--no-codex` to
+keep deep mode Anthropic-only as well. Hydra shows which providers receive your code
+and asks for confirmation before any agents run.
 
 Without the Codex plugin, Hydra runs all advisors on Opus. In standard mode that is
-3 advisors + chairman (4 agents). In deep mode, all 6 advisors + 3 reviewers + chairman
+4 advisors + chairman (5 agents). In deep mode, all 6 advisors + 3 reviewers + chairman
 (10 agents). Same perspectives -- just without cross-model diversity.
 
 ---
 
 ## When NOT to Use Hydra
 
-Hydra spawns 4-10 agents. Use it for decisions that benefit from multiple
+Hydra spawns 5-10 agents. Use it for decisions that benefit from multiple
 perspectives -- not everything.
 
 **Just ask Claude directly for:** syntax fixes, single-file refactors, code generation,
@@ -278,7 +279,7 @@ spawning agents.
 
 ## FAQ
 
-**How much does it cost?** Standard: around $0.25-0.50. Deep: around $1.50-2.50. These are API
+**How much does it cost?** Standard: around $0.35-0.65. Deep: around $1.50-2.50. These are API
 costs charged to your accounts. Hydra shows estimates before running.
 
 **Where are reports?** `.hydra/reports/` in your project root (gitignored). Run

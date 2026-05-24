@@ -16,20 +16,21 @@ description: >
   'hydra explain', 'hydra details', 'hydra tensions', 'hydra blind-spots'.
 ---
 
-<!-- v2.0 in progress on branch feat/hydra-2.0-core. SKILL.md still describes
-     the v1.x runtime (3-advisor / Codex-companion design). The Python core in
-     hydra/ is being rebuilt; SKILL.md rewrite is scheduled for Phase 4 (Task 39
-     of docs/plans/2026-04-17-hydra-2.0-core.md). Until then, do NOT add new
-     v1.x-only detail here. New v2.0 design lives in
-     docs/specs/2026-04-17-hydra-2.0-core-design-v2.md. -->
+<!-- v2.0: per ADR docs/adr/0001-execution-substrate.md (Option C, accepted 2026-05-23),
+     interactive /hydra runs in THIS harness (Agent tool + codex-companion), so SKILL.md is
+     the living product surface. Prompt-level v2.0 wins land here directly (Echo advisor;
+     chairman grounding + suspicious-verdict gate). The Python core in hydra/ is scoped to
+     the bench (deterministic citation-grounding + reproducible scoring) -- it does NOT
+     replace this runtime. Design context: docs/specs/2026-04-17-hydra-2.0-core-design-v2.md. -->
 
 # Hydra
 
-Three advisors analyze your code from different angles by default (standard mode).
-Escalate to deep mode for the full council: six advisors, three cross-examining
-reviewers, and a chairman synthesizing the final verdict.
+Four advisors analyze your code from different angles by default (standard mode) --
+including Echo, which reviews AI-assisted-development failure modes. Escalate to deep
+mode for the full council: six advisors, three cross-examining reviewers, and a
+chairman synthesizing the final verdict.
 
-Standard mode runs 3 advisors + chairman on Opus (~$0.25-0.50). Deep mode adds 3 more
+Standard mode runs 4 advisors + chairman on Opus (~$0.35-0.65). Deep mode adds 2 more
 advisors (including 2 Codex), 3 reviewers, and cross-model diversity (~$1.50-2.50).
 
 Reference files in `references/` define all prompts and protocols -- read them at the
@@ -41,18 +42,18 @@ relevant step.
 
 | Mode | CLI | Advisors | Reviewers | Chairman | Total | Est. Cost |
 |------|-----|----------|-----------|----------|-------|-----------|
-| **standard** | *(default)* | 3 (Cassandra + Stranger + Sentinel) | 0 | 1 Opus | 4 | ~$0.25-0.50 |
+| **standard** | *(default)* | 4 (Cassandra + Mies+ + Sentinel + Echo) | 0 | 1 Opus | 5 | ~$0.35-0.65 |
 | **deep** | `--mode deep` | 6 (4 Opus + 2 Codex) | 3 (all Opus) | 1 Opus | 10 | ~$1.50-2.50 |
 
 Modifiers (combinable):
-- `--no-codex` -- Codex advisors run on Opus instead. Works on both modes.
+- `--no-codex` -- the deep-mode Codex advisors (Mies+, Sentinel) run on Opus instead.
 - `--no-review` -- Skip peer review phase. Only meaningful with deep (reduces to 7 agents, ~$1.00).
 
 **Minimum thresholds** -- formula: `ceil(N * 0.6)`, min 2:
 
 | Mode | Min Advisors | Min Reviewers |
 |------|-------------|---------------|
-| standard | 2 of 3 | -- |
+| standard | 3 of 4 | -- |
 | deep | 4 of 6 | 2 of 3 (if reviewers active) |
 
 **Mode resolution:** Two modes + modifiers:
@@ -67,8 +68,8 @@ Legacy aliases (emit migration hint):
 **Focus modes** (combinable with any mode): `--focus security | perf | readability | architecture | reliability`
 When a focus flag is active, the primary advisor for that focus gets 2x word budget.
 The chairman receives a focus directive weighting that advisor's findings at 1.5x.
-Focus mapping: security -> Sentinel, perf -> Volta, readability -> Stranger, architecture -> Navigator, reliability -> Cassandra.
-Note: focus flags for Volta, Navigator, or Mies auto-escalate to deep mode when used with standard (these advisors only exist in deep mode). Mies has no focus mapping but is included in deep mode by default.
+Focus mapping: security -> Sentinel, perf -> Volta, readability -> Mies+, architecture -> Navigator, reliability -> Cassandra.
+Note: focus flags for Volta or Navigator auto-escalate to deep mode when used with standard (these advisors only exist in deep mode). Mies+ exists in both modes (readability focus) and never auto-escalates.
 
 ---
 
@@ -171,7 +172,7 @@ Note: focus flags for Volta, Navigator, or Mies auto-escalate to deep mode when 
    if INPUT_SIZE >= 300:  COMPLEXITY = large   (word limits x 1.20)
    ```
    The `COMPLEXITY` variable determines advisor word limits (see `references/advisors.md`).
-   Mies and Stranger are capped at their base limits regardless of complexity scaling.
+   Mies+ carries two lenses (reduction + readability) and scales with complexity like the others.
 10. **Cost warning + confirmation:**
 
 ```
@@ -187,7 +188,7 @@ Estimated: {{TIME}}, {{COST}}.
 
 Alternatives:
   {{IF standard}} --mode deep -> 10 agents, ~$1.50-2.50, ~2 min (escalate)
-  {{IF deep}} (no flags) -> standard: 4 agents, ~$0.25-0.50, ~1 min (reduce)
+  {{IF deep}} (no flags) -> standard: 5 agents, ~$0.35-0.65, ~1 min (reduce)
   --no-codex       -> Codex advisors run on Opus instead
   --no-review      -> skip peer review (deep only, reduces to 7 agents)
 
@@ -310,18 +311,18 @@ active (branch/iterate/pr), advisors that had `source_code` receive `diff_contex
 | Advisor | source_code / diff_context | git_diff | claude_md | project_structure | config_files |
 |---------|:--------------------------:|:--------:|:---------:|:-----------------:|:------------:|
 | Cassandra | Y | Y | | | |
-| Mies | Y | Y | Y | Y | Y |
+| Mies+ | Y | Y | Y | Y | Y |
 | Navigator | Y | Y | | Y | |
-| Stranger | Y | Y | | | |
 | Volta | Y | Y | | | Y |
 | Sentinel | Y | Y | | | |
+| Echo | Y | Y | Y | Y | |
 
 When `diff_context` is active, all advisors receive diff hunks + 30-line context instead of
 full file content. The `-U30` window provides sufficient surrounding code for failure-chain
-analysis (Cassandra), boundary tracing (Navigator), and readability assessment (Stranger).
+analysis (Cassandra), boundary tracing (Navigator), and readability assessment (Mies+).
 
-**Which advisors** -- see Modes table above. In standard mode: Cassandra, Stranger, Sentinel (3 advisors).
-In deep mode: all 6 advisors. With `--no-codex`, Stranger and Sentinel run as Opus agents
+**Which advisors** -- see Modes table above. In standard mode: Cassandra, Mies+, Sentinel, Echo (4 advisors).
+In deep mode: all 6 advisors. With `--no-codex`, Mies+ and Sentinel run as Opus agents
 (same prompts, spawn via Agent tool instead of Codex). All perspectives are preserved;
 only cross-model diversity is lost.
 
@@ -333,11 +334,11 @@ only cross-model diversity is lost.
 ```
 Batch 1 (dispatch all simultaneously):
   - Agent tool: Cassandra (Opus)
-  - Agent tool: Stranger (Opus or Codex depending on --no-codex)
-  - Agent tool: Sentinel (Opus or Codex depending on --no-codex)
+  - Agent tool: Mies+ (Opus)
+  - Agent tool: Sentinel (Opus)
+  - Agent tool: Echo (Opus)
 ```
-If Codex is active: Stranger and Sentinel run sequentially via Codex (see below).
-If --no-codex or standard mode without Codex plugin: all 3 run as Opus Agent calls in parallel.
+Standard mode is Opus-only: all 4 advisors run as Opus Agent calls in parallel. Codex advisors are deep-mode only (see the Codex section above).
 
 **Deep mode dispatch:**
 **IMPORTANT: Codex tasks run SEQUENTIALLY** (codex-companion allows only one active task
@@ -346,13 +347,13 @@ per workspace). Launch the first Codex task in the SAME batch as the 4 Opus Agen
 ```
 Batch 1 (dispatch all simultaneously):
   - Agent tool: Cassandra (Opus)
-  - Agent tool: Mies (Opus)
   - Agent tool: Navigator (Opus)
   - Agent tool: Volta (Opus)
-  - Bash tool: Codex Stranger (see below)
+  - Agent tool: Echo (Opus)
+  - Bash tool: Codex Mies+ (see below)
 
-After Stranger Bash returns:
-  If Stranger TIMED OUT (exit 124):
+After Mies+ Bash returns:
+  If Mies+ TIMED OUT (exit 124):
     - Spawn Sentinel as Opus via Agent tool (skip sequential Codex slot).
       Increment CODEX_FAILURES. Use same Sentinel prompt, route through Agent tool
       with `model: "opus"`. Set {{SENTINEL_MODEL}} = "Opus".
@@ -367,7 +368,7 @@ First, create temp dir (separate Bash call):
 HYDRA_TMP=$(mktemp -d "${TMPDIR:-/tmp}/hydra-XXXXXX") && chmod 700 "$HYDRA_TMP" && echo "$HYDRA_TMP"
 ```
 
-Write prompt files via Write tool to `$HYDRA_TMP/prompt-stranger.md` and `$HYDRA_TMP/prompt-sentinel.md`.
+Write prompt files via Write tool to `$HYDRA_TMP/prompt-mies_plus.md` and `$HYDRA_TMP/prompt-sentinel.md`.
 
 Then for each Codex advisor (one Bash call per advisor, set Bash tool timeout to 90000ms):
 
@@ -405,7 +406,7 @@ fi
 **Effort strategy:**
 | Role | Model | Effort | Rationale |
 |------|-------|--------|-----------|
-| Stranger | GPT-5.4 | `medium` | Readability = pattern matching, not deep reasoning |
+| Mies+ | GPT-5.4 | `high` | Two lenses (reduction + first-reader walkthrough) need sustained reasoning |
 | Sentinel | GPT-5.4 | `high` | Security = thorough analysis of attack surfaces |
 
 **Auth error detection:** After each Codex call, check stderr for auth errors:
@@ -458,7 +459,7 @@ Print structured output status: `[Hydra] {{Name}}: {{valid_structured|valid_pros
 - Auth/script-not-found errors trigger immediate circuit breaker regardless of count.
 
 **Post-cascade model resolution:** Set model labels based on ACTUAL execution:
-- If Stranger ran on Opus (cascade or --no-codex): `{{STRANGER_MODEL}}` = "Opus"
+- If Mies+ ran on Opus (cascade or --no-codex): `{{MIES_PLUS_MODEL}}` = "Opus"
 - If Sentinel ran on Opus: `{{SENTINEL_MODEL}}` = "Opus"
 - If BOTH ran on Opus: remove cross-model rules from chairman prompt.
 
@@ -508,7 +509,7 @@ Compute `CONFIDENCE_SCORE` from pre-computed values (use structured output JSON 
 fall back to regex extraction from prose):
 
 ```
-EXPECTED_ADVISORS = 3 (standard) or 6 (deep)  // always expected, not responding
+EXPECTED_ADVISORS = 4 (standard) or 6 (deep)  // always expected, not responding
 TOTAL_FINDINGS    = sum of all findings across responding advisors
 IS_WINDOWED       = true if diff_context was used (branch/iterate/pr)
 
@@ -625,6 +626,7 @@ Pre-computed injections before RULES:
 - `DISPUTES: {{[CONTRADICTED] findings with both positions}}`
 - `SERIOUS+ FINDINGS: {{list with attribution}}`
 - `COVERAGE GAPS: {{findings missing file refs}}`
+- `SCOPE: is_windowed={{IS_WINDOWED}} ({{SCOPE_PCT_OR_NULL}}% of changed lines)` -- windowed reviews see only the diff window; the chairman applies the GROUNDING windowed exception
 
 Chairman focuses on: dispute resolution, synthesis of SERIOUS+ findings, Verify block.
 Orchestrator handles: Consensus Map, confidence counts, signal line, formatting.
