@@ -8,7 +8,7 @@ Create `.hydra/.gitignore` with `*` on first run.
 **Status labels:**
 - `responded` -- advisor/reviewer completed successfully
 - `timeout` -- spawned but did not respond within 120s
-- `not run` -- excluded by active mode (e.g., Mies/Navigator/Volta in standard mode)
+- `not run` -- excluded by active mode (e.g., Navigator/Volta in standard mode)
 
 **Mode-aware section rules:**
 - Keep status table rows for excluded roles as `not run`. Omit their full response sections.
@@ -57,11 +57,11 @@ previous_report: {{PREV_REPORT_PATH_OR_NULL}}
 | Role | Model | Status | Position |
 |------|-------|--------|----------|
 | Cassandra | Opus | {{responded/timeout}} | {{APPROVE/CONCERN/REJECT/N/A}} |
-| Mies | Opus | {{responded/timeout}} | {{position}} |
-| Navigator | Opus | {{responded/timeout}} | {{position}} |
-| The Stranger | {{Model}} | {{responded/timeout/not run}} | {{position}} |
-| Volta | Opus | {{responded/timeout}} | {{position}} |
-| Sentinel | {{Model}} | {{responded/timeout/not run}} | {{position}} |
+| Mies+ | {{Model}} | {{responded/timeout}} | {{position}} |
+| Navigator | Opus | {{responded/timeout/not run}} | {{position}} |
+| Volta | Opus | {{responded/timeout/not run}} | {{position}} |
+| Sentinel | {{Model}} | {{responded/timeout}} | {{position}} |
+| Echo | Opus | {{responded/timeout}} | {{position}} |
 
 **Navigation:** [Verdict](#verdict) | [Actions](#actions) | [Consensus](#consensus-map) | [Advisors](#full-advisor-responses) | [Reviews](#peer-reviews)
 
@@ -132,19 +132,19 @@ Legend: Evidence = count of [VERIFIED] findings. Agrees With = advisor(s) who fo
 ### Cassandra -- Failure Archaeologist (Opus)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
-### Mies -- Reductionist (Opus)
+### Mies+ -- Reductionist & Adversarial First-Reader ({{Model}})
 {{FULL_RESPONSE or [TIMEOUT]}}
 
 ### Navigator -- Systems Cartographer (Opus)
-{{FULL_RESPONSE or [TIMEOUT]}}
-
-### The Stranger -- Adversarial First-Reader (Codex)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
 ### Volta -- Efficiency Surgeon (Opus)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
 ### Sentinel -- Adversarial Security (Codex)
+{{FULL_RESPONSE or [TIMEOUT]}}
+
+### Echo -- AI-Assisted-Development Reviewer (Opus)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
 ---
