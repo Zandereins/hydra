@@ -121,9 +121,9 @@ cross-model analysis, runs sequentially alongside Opus advisors)
 
 ## The Advisors
 
-Standard mode uses 4 advisors (Cassandra, Mies+, Sentinel, Echo). Deep mode adds
-Navigator and Volta for the full 6. Four run on Claude Opus,
-two on OpenAI Codex -- different model, different blind spots. When Opus and Codex
+Standard mode uses 4 advisors (Cassandra, Mies+, Sentinel, Echo), all on Claude Opus.
+Deep mode adds Navigator and Volta for the full 6 and runs two of them (Mies+, Sentinel)
+on OpenAI Codex -- different model, different blind spots. When Opus and Codex
 independently agree, that's the strongest signal. When they disagree, that's the
 highest-value finding.
 

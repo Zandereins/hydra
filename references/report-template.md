@@ -141,7 +141,7 @@ Legend: Evidence = count of [VERIFIED] findings. Agrees With = advisor(s) who fo
 ### Volta -- Efficiency Surgeon (Opus)
 {{FULL_RESPONSE or [TIMEOUT]}}
 
-### Sentinel -- Adversarial Security (Codex)
+### Sentinel -- Adversarial Security ({{Model}})
 {{FULL_RESPONSE or [TIMEOUT]}}
 
 ### Echo -- AI-Assisted-Development Reviewer (Opus)
