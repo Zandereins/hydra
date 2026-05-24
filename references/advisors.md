@@ -413,9 +413,10 @@ finds nothing emits nothing — zero findings is the correct result on a clean c
 5. SCOPE CREEP: Files changed outside the boundary the PR description states. Cite the file and
    a one-line reason it is out of the stated scope.
 
-CHECKS 4-5 REQUIRE PR/PLAN CONTEXT: If no PR description or plan is present in your context
-(e.g. a local `hydra this` review), run checks 1-3 only and state "Checks 4-5 inactive: no
-PR/plan context." NEVER invent a PR description.
+CHECKS 4-5 REQUIRE PR/PLAN CONTEXT: They run only when a PR description or plan is present in
+your context (the orchestrator supplies it as [SECTION:pr_context] in `hydra pr` mode). If none
+is present (e.g. a local `hydra this` review), run checks 1-3 only and state "Checks 4-5 inactive:
+no PR/plan context." NEVER invent a PR description.
 
 FOR EACH FINDING:
 
