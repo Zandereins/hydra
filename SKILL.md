@@ -46,7 +46,7 @@ relevant step.
 | **deep** | `--mode deep` | 6 (4 Opus + 2 Codex) | 3 (all Opus) | 1 Opus | 10 | ~$1.50-2.50 |
 
 Modifiers (combinable):
-- `--no-codex` -- Codex advisors run on Opus instead. Works on both modes.
+- `--no-codex` -- the deep-mode Codex advisors (Mies+, Sentinel) run on Opus instead.
 - `--no-review` -- Skip peer review phase. Only meaningful with deep (reduces to 7 agents, ~$1.00).
 
 **Minimum thresholds** -- formula: `ceil(N * 0.6)`, min 2:
@@ -334,12 +334,11 @@ only cross-model diversity is lost.
 ```
 Batch 1 (dispatch all simultaneously):
   - Agent tool: Cassandra (Opus)
-  - Agent tool: Mies+ (Opus or Codex depending on --no-codex)
-  - Agent tool: Sentinel (Opus or Codex depending on --no-codex)
-  - Agent tool: Echo (Opus, always)
+  - Agent tool: Mies+ (Opus)
+  - Agent tool: Sentinel (Opus)
+  - Agent tool: Echo (Opus)
 ```
-If Codex is active: Mies+ and Sentinel run sequentially via Codex (see below); Cassandra and Echo run as Opus in parallel.
-If --no-codex or standard mode without Codex plugin: all 4 run as Opus Agent calls in parallel.
+Standard mode is Opus-only: all 4 advisors run as Opus Agent calls in parallel. Codex advisors are deep-mode only (see the Codex section above).
 
 **Deep mode dispatch:**
 **IMPORTANT: Codex tasks run SEQUENTIALLY** (codex-companion allows only one active task

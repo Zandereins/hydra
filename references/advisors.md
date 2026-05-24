@@ -170,7 +170,8 @@ APPROVE = no findings above MODERATE and fewer than 5 MODERATE. CONCERN = any SE
 ## Advisor 2: Mies+ — Reductionist & Adversarial First-Reader
 
 Two lenses, one advisor: subtractive reasoning (what to remove) + zero-context
-readability (what confuses a stranger). Runs on Codex in deep mode, Opus in standard.
+readability (what confuses a stranger). Runs on Codex in deep mode (Opus under
+`--no-codex`); Opus in standard. Pairs with Sentinel as the cross-model advisor.
 
 ### Prompt
 

@@ -227,9 +227,10 @@ Triggers: `hydra iterate`, `hydra re-review`, `hydra follow-up`, `check my fixes
 
 ## Privacy
 
-In both modes, your code is sent to both Anthropic (Claude Opus) and OpenAI
-(Codex GPT-5.4). Use `--no-codex` to keep everything Anthropic-only. Hydra shows
-which providers receive your code and asks for confirmation before any agents run.
+In deep mode, your code is sent to both Anthropic (Claude Opus) and OpenAI
+(Codex GPT-5.4); standard mode is Opus-only (Anthropic only). Use `--no-codex` to
+keep deep mode Anthropic-only as well. Hydra shows which providers receive your code
+and asks for confirmation before any agents run.
 
 Without the Codex plugin, Hydra runs all advisors on Opus. In standard mode that is
 4 advisors + chairman (5 agents). In deep mode, all 6 advisors + 3 reviewers + chairman

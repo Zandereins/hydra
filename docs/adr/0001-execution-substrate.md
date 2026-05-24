@@ -18,7 +18,7 @@ reconciles them.
 
 **Harness / Agent-tool (the live v1.x product, `SKILL.md`):**
 Advisors are spawned via the Claude-Code **Agent tool** (`Spawn via Agent tool with
-model: "opus"` — `SKILL.md:328, 348, 473`). Codex advisors run through a
+model: "opus"`, see SKILL.md Step 3 advisor dispatch). Codex advisors run through a
 `codex-companion.mjs` subprocess, **sequentially** (single active task —
 `SKILL.md:343`). This runs *inside the harness*: no `ANTHROPIC_API_KEY`, no direct
 HTTP, billed under the user's Claude plan rather than per-token API cost.
