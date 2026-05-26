@@ -28,6 +28,22 @@ def test_invoke_hydra_argv_has_no_cwd_flag(tmp_path: Path) -> None:
     assert "--cwd" not in argv, f"--cwd must not appear in argv; got: {argv}"
 
 
+def test_invoke_hydra_disables_hooks_for_reproducibility(tmp_path: Path) -> None:
+    """The bench must neutralize operator hooks (e.g. a blocking Stop hook) so the
+    headless run is hermetic; --settings '{"disableAllHooks": true}' is the mechanism."""
+    fake_report = tmp_path / ".hydra" / "reports" / "hydra-20260417-120000.md"
+    fake_report.parent.mkdir(parents=True)
+    fake_report.write_text("# report")
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        invoke_hydra(tmp_path)
+
+    argv: list[str] = mock_run.call_args.args[0]
+    assert "--settings" in argv
+    assert '{"disableAllHooks": true}' in argv
+
+
 def test_invoke_hydra_uses_cwd_kwarg(tmp_path: Path) -> None:
     """subprocess.run must receive cwd= so the child process runs in the workspace."""
     fake_report = tmp_path / ".hydra" / "reports" / "hydra-20260417-120000.md"
