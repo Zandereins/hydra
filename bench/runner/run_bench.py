@@ -15,6 +15,7 @@ import yaml
 
 from bench.runner.models import GroundTruthFinding, NegativeAnchor
 from bench.runner.scoring import CaseScore, score_case
+from bench.runner.stats import MetricCI, bootstrap_ci, ci_regression, success_rate
 
 ROOT = Path(__file__).resolve().parents[2]
 CASES_DIR = ROOT / "bench" / "cases"
@@ -127,6 +128,95 @@ def write_baseline(
     output_path.write_text(json.dumps(payload, indent=2))
 
 
+# --- Track-3 P3: statistical (CI) baseline + blocking gate (spec §4) ----------
+
+CI_METRICS = ("critical_recall", "recall", "f1", "false_positive_rate")
+
+
+def aggregate_outcomes(outcomes: list[str]) -> tuple[int, int, dict[str, int]]:
+    """Capture-all reliability summary from per-attempt outcome labels (spec §4):
+    (n_attempts, n_scored, failure_modes). Discards nothing — every attempt counts."""
+    n_attempts = len(outcomes)
+    n_scored = sum(1 for o in outcomes if o == "scored")
+    failure_modes: dict[str, int] = {}
+    for o in outcomes:
+        if o != "scored":
+            failure_modes[o] = failure_modes.get(o, 0) + 1
+    return n_attempts, n_scored, failure_modes
+
+
+def metric_cis(scores: list[CaseScore], *, seed: int = 0) -> dict[str, MetricCI]:
+    """Bootstrap 95% CI per gate metric over one case's scored runs."""
+    return {m: bootstrap_ci([getattr(s, m) for s in scores], seed=seed) for m in CI_METRICS}
+
+
+def write_ci_baseline(
+    label: str,
+    commit_sha: str,
+    per_case: dict[str, dict[str, Any]],
+    output_path: Path,
+    *,
+    confidence: float = 0.95,
+    n_resamples: int = 2000,
+) -> None:
+    """Write a statistical baseline: per case, median + bootstrap CI per metric over N
+    scored runs, plus first-class harness success-rate + failure-mode breakdown.
+
+    ``per_case[case]`` carries ``{"scores": list[CaseScore], "outcomes": list[str]}``
+    (outcomes = every attempt incl. failures, so success-rate is honest)."""
+    cases: dict[str, Any] = {}
+    for case_id, data in per_case.items():
+        scores: list[CaseScore] = data["scores"]
+        outcomes: list[str] = data["outcomes"]
+        n_attempts, n_scored, failure_modes = aggregate_outcomes(outcomes)
+        cases[case_id] = {
+            "n_attempts": n_attempts,
+            "n_scored": n_scored,
+            "success_rate": success_rate(n_scored=n_scored, n_attempts=n_attempts),
+            "failure_modes": failure_modes,
+            "metrics": {m: asdict(ci) for m, ci in metric_cis(scores).items()},
+        }
+    payload = {
+        "label": label,
+        "captured_at": datetime.now(UTC).isoformat(),
+        "commit_sha": commit_sha,
+        "statistical": True,
+        "confidence": confidence,
+        "n_resamples": n_resamples,
+        "cases": cases,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2))
+
+
+def gate_against_ci_baseline(
+    current_critical_recall_ci: dict[str, MetricCI], baseline_path: Path
+) -> int:
+    """Blocking CI gate (spec §4): fail (exit 1) when the challenger's critical-recall
+    CI is disjoint-and-below the baseline's on >=2 cases. Zero scored runs -> exit 2
+    (harness outage, not a regression). Overlapping CIs -> exit 0."""
+    if not current_critical_recall_ci:
+        print("[ERROR] no scored runs — harness failure, not a quality regression")
+        return 2
+    baseline = json.loads(baseline_path.read_text())
+    base_ci: dict[str, MetricCI] = {}
+    for case_id, c in baseline.get("cases", {}).items():
+        cr = c.get("metrics", {}).get("critical_recall")
+        if cr is not None:
+            base_ci[case_id] = MetricCI(
+                median=float(cr["median"]), ci_low=float(cr["ci_low"]), ci_high=float(cr["ci_high"])
+            )
+    result = ci_regression(base_ci, current_critical_recall_ci)
+    head = "CI-REGRESSION FAIL" if result.failed else "OK"
+    print(
+        f"[{head}] gated=critical_recall (non-overlapping CIs) "
+        f"regressed={result.regressed_cases}"
+    )
+    for case_id, detail in sorted(result.details.items()):
+        print(f"  {case_id}: {detail}")
+    return 1 if result.failed else 0
+
+
 MAX_ATTEMPTS = 5  # retry transient headless failures (timeout / no-report / action-less)
 
 
@@ -179,13 +269,22 @@ def _capture_case_run(case_id: str, judge: object) -> tuple[CaseScore | None, li
     return last_scored, outcomes
 
 
-def _print_telemetry(telemetry: list[dict[str, Any]]) -> None:
-    """Surface harness reliability (don't silently discard failed attempts)."""
+def _print_telemetry(
+    telemetry: list[dict[str, Any]], per_case: dict[str, dict[str, Any]] | None = None
+) -> None:
+    """Surface harness reliability (don't silently discard failed attempts) — per-case
+    success-rate + failure-mode breakdown (spec §4: success-rate is first-class)."""
     total_attempts = sum(t["attempts"] for t in telemetry)
     scored = sum(1 for t in telemetry if t["accepted"])
     print(f"[telemetry] slots={len(telemetry)} scored={scored} total_attempts={total_attempts}")
-    for t in telemetry:
-        print(f"  {t['case']}: accepted={t['accepted']} attempts={t['outcomes']}")
+    if per_case:
+        for case_id, d in sorted(per_case.items()):
+            n_att, n_sc, fails = aggregate_outcomes(d["outcomes"])
+            rate = success_rate(n_scored=n_sc, n_attempts=n_att)
+            print(f"  {case_id}: success_rate={rate:.2f} ({n_sc}/{n_att}) failures={fails}")
+    else:
+        for t in telemetry:
+            print(f"  {t['case']}: accepted={t['accepted']} attempts={t['outcomes']}")
 
 
 def gate_against_baseline(
@@ -245,21 +344,32 @@ def _run_mode(
 
     judge = resolve_judge(client=client, model=judge_model)
 
-    run_records: list[dict[str, Any]] = []
+    run_records: list[dict[str, Any]] = []  # legacy point-baseline (advisory gate compat)
+    per_case: dict[str, dict[str, Any]] = {}  # capture-all: scored runs + every outcome
     telemetry: list[dict[str, Any]] = []
     for spec in plan_runs(mode=mode):
         for _ in range(spec.runs):
             score, outcomes = _capture_case_run(spec.case_id, judge)
+            slot = per_case.setdefault(spec.case_id, {"scores": [], "outcomes": []})
+            slot["outcomes"].extend(outcomes)
             telemetry.append(
                 {"case": spec.case_id, "attempts": len(outcomes), "outcomes": outcomes,
                  "accepted": score is not None}
             )
             if score is not None:
+                slot["scores"].append(score)
                 run_records.append({"scores": {spec.case_id: score}})
-    _print_telemetry(telemetry)
+    _print_telemetry(telemetry, per_case)
 
     if check_baseline is not None:
-        return gate_against_baseline(
+        baseline = json.loads(check_baseline.read_text())
+        if baseline.get("statistical"):  # CI baseline -> blocking CI gate (spec §4)
+            current_cr = {
+                cid: metric_cis(d["scores"])["critical_recall"]
+                for cid, d in per_case.items() if d["scores"]
+            }
+            return gate_against_ci_baseline(current_cr, check_baseline)
+        return gate_against_baseline(  # legacy single-run baseline -> advisory gate
             _median_metric_by_case(run_records, "critical_recall"),
             check_baseline,
             current_f1=_median_metric_by_case(run_records, "f1"),
@@ -267,8 +377,8 @@ def _run_mode(
 
     ts = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     out = baseline_out or (BASELINES_DIR / f"run-{mode}-{ts}.json")
-    write_baseline(label=mode, commit_sha="HEAD", runs=run_records, output_path=out)
-    print(f"baseline -> {out}")
+    write_ci_baseline(label=mode, commit_sha="HEAD", per_case=per_case, output_path=out)
+    print(f"statistical baseline -> {out}")
     return 0
 
 
