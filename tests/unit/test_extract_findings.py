@@ -39,6 +39,62 @@ def test_extract_from_report_yields_top_actions() -> None:
     assert "Authorization" in f["title"]
 
 
+REAL_REPORT = """<!-- hydra-integrity: sha256:abc session:HYDRA-x scope:body -->
+---
+hydra_version: "1.0"
+top_actions:
+  - id: A1
+    severity: SERIOUS
+    file: src/interceptors/auth.ts
+    lines: 13-18
+    summary: Gate forwarding on a destination allowlist
+---
+
+# Hydra Report: Axios Auth
+
+## Actions
+
+### A1 -- SERIOUS -- src/interceptors/auth.ts:13-18 -- Est: M
+
+**What:** Inbound `Authorization` is forwarded onto every outbound request.
+**Why:** Confused-deputy and credential-leak risk.
+**How:** Gate on a destination allowlist.
+
+### A2 -- SERIOUS -- src/interceptors/auth.ts:4-9 -- Est: S
+
+**What:** `AuthConfig` declared but never used.
+**Why:** Camouflages A1.
+"""
+
+
+def test_real_report_parses_body_actions_with_bug_text() -> None:
+    # The live report leads with an integrity comment AND carries findings in the
+    # `## Actions` body (`### A{N} -- SEV -- file:lines -- Est:`). Body text is
+    # bug-descriptive (What/Why), unlike the fix-oriented frontmatter summary.
+    cands = extract_from_report(REAL_REPORT)
+    assert len(cands) == 2
+    assert cands[0]["file"] == "src/interceptors/auth.ts"
+    assert cands[0]["lines"] == "13-18"
+    assert cands[0]["severity"] == "SERIOUS"
+    assert "Authorization" in cands[0]["title"]
+    assert "forwarded" in cands[0]["title"]
+
+
+def test_leading_integrity_comment_does_not_break_frontmatter_fallback() -> None:
+    md = (
+        "<!-- hydra-integrity: sha256:x session:y scope:body -->\n"
+        "---\n"
+        "top_actions:\n"
+        "  - summary: CRLF injection\n"
+        "    file: app.js\n"
+        "    lines: '10-12'\n"
+        "    severity: SERIOUS\n"
+        "---\nbody\n"  # no ## Actions body -> falls back to frontmatter
+    )
+    cands = extract_from_report(md)
+    assert cands[0]["file"] == "app.js"
+
+
 def test_one_x_candidate_omits_default_issue_class() -> None:
     md = (
         "---\n"
