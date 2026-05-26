@@ -12,8 +12,10 @@ from hydra.envelopes import AdvisorFinding
 # frontmatter; strip it so `startswith("---")` works (verified against a live report).
 _INTEGRITY_RE = re.compile(r"\A<!--.*?-->[ \t]*\n", re.DOTALL)
 # Body action heading: `### A1 -- SERIOUS -- src/interceptors/auth.ts:13-18 -- Est: M`
+# Reports use either ASCII `--` or em/en-dash (`—`/`–`) as the separator — accept all.
+_DASH = r"(?:--|—|–)"
 _ACTION_RE = re.compile(
-    r"^###\s+A\d+\s+--\s+(?P<sev>[A-Z]+)\s+--\s+(?P<loc>.+?)\s+--\s+Est:",
+    rf"^###\s+A\d+\s+{_DASH}\s+(?P<sev>[A-Z]+)\s+{_DASH}\s+(?P<loc>.+?)\s+{_DASH}\s+Est:",
     re.MULTILINE,
 )
 # Bug-descriptive lines inside an action block (What/Why) — best for must_mention.

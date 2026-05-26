@@ -22,12 +22,24 @@ class FindingMatch:
     candidate_idx: int
 
 
-def _parse_range(lines: str) -> tuple[int, int]:
-    if "-" in lines:
-        a, b = lines.split("-", 1)
-        return int(a), int(b)
-    n = int(lines)
-    return n, n
+def _parse_ranges(spec: str) -> list[tuple[int, int]]:
+    """Parse a line spec into (start, end) pairs.
+
+    Handles single ('15'), range ('13-23'), and comma-separated multi-spans
+    ('15,21-22' -> [(15,15),(21,22)]) — real Hydra reports cite all three forms.
+    """
+    out: list[tuple[int, int]] = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            a, b = part.split("-", 1)
+            out.append((int(a), int(b)))
+        else:
+            n = int(part)
+            out.append((n, n))
+    return out
 
 
 RANGE_TOL = 5  # spec §11.4 (was hardcoded 10); calibrate against baseline before freezing
@@ -36,12 +48,17 @@ Judge = Callable[[dict[str, object], dict[str, object]], bool]
 
 
 def _ranges_overlap(a: str, b: str, tol: int = RANGE_TOL) -> bool:
+    """True if ANY sub-span of a overlaps ANY sub-span of b (within tol)."""
     try:
-        a1, a2 = _parse_range(a)
-        b1, b2 = _parse_range(b)
+        a_spans = _parse_ranges(a)
+        b_spans = _parse_ranges(b)
     except ValueError:
         return False
-    return not (a2 + tol < b1 or b2 + tol < a1)
+    return any(
+        not (a2 + tol < b1 or b2 + tol < a1)
+        for (a1, a2) in a_spans
+        for (b1, b2) in b_spans
+    )
 
 
 def _keyword_match(must_mention: list[str], cand: dict[str, object]) -> bool:

@@ -80,6 +80,21 @@ def test_real_report_parses_body_actions_with_bug_text() -> None:
     assert "forwarded" in cands[0]["title"]
 
 
+def test_em_dash_action_headings_parse() -> None:
+    # Real reports vary the heading separator between ASCII `--` and em-dash `—`.
+    md = (
+        "## Actions\n\n"
+        "### A1 — CRITICAL — src/plugins/rate-limit.ts:15,21-22 — Est: S\n\n"
+        "**What:** async onRequest hook declares an unused done parameter.\n"
+        "**Why:** Fastify hangs every request.\n"
+    )
+    cands = extract_from_report(md)
+    assert len(cands) == 1
+    assert cands[0]["file"] == "src/plugins/rate-limit.ts"
+    assert cands[0]["lines"] == "15,21-22"
+    assert "done" in cands[0]["title"]
+
+
 def test_leading_integrity_comment_does_not_break_frontmatter_fallback() -> None:
     md = (
         "<!-- hydra-integrity: sha256:x session:y scope:body -->\n"

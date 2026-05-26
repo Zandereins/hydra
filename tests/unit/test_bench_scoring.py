@@ -115,6 +115,13 @@ def test_range_tol_is_five() -> None:
     assert RANGE_TOL == 5
 
 
+def test_comma_separated_candidate_lines_match() -> None:
+    # real reports cite multi-span lines like "15,21-22"; any sub-span must overlap the GT
+    gt = [_gt(file="rate-limit.ts", lines="16-28", must_mention=("done", "async"))]
+    cand = [_cand(file="rate-limit.ts", lines="15,21-22", title="async onRequest declares done")]
+    assert score_case(gt, cand, judge=None).matched == 1
+
+
 def test_keyword_match_required_when_must_mention_present() -> None:
     # file+range overlap but NO keyword -> miss (judge disabled)
     score = score_case([_gt()], [_cand(title="something unrelated")], judge=None)
