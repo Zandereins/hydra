@@ -1,0 +1,49 @@
+diff --git a/src/billing/invoice-total.ts b/src/billing/invoice-total.ts
+index 9cb7f6f..bd5d6df 100644
+--- a/src/billing/invoice-total.ts
++++ b/src/billing/invoice-total.ts
+@@ -18,8 +18,11 @@ const FEE_CONFIG = JSON.parse(FEE_CONFIG_JSON) as {
+ export interface LineItem {
+   /** Product SKU */
+   sku: string;
+-  /** Unit price in whole cents (e.g. 1099 = $10.99) */
+-  priceCents: number;
++  /**
++   * Unit price as a decimal dollar string (e.g. "10.99").
++   * Accepted from the API request body.
++   */
++  price: string;
+   /** Quantity — must be a positive integer */
+   qty: number;
+ }
+@@ -32,15 +35,16 @@ export interface InvoiceTotals {
+ 
+ /**
+  * Sum line-item totals.
+- * Uses integer arithmetic only — `priceCents * qty` is exact for integers
+- * up to 2^53, well within practical invoice sizes.
++ * Parses price strings from the request body and accumulates in dollars,
++ * then converts to cents at the end.
+  */
+ export function calcSubtotal(items: LineItem[]): number {
+-  let subtotalCents = 0;
++  let subtotal = 0;
+   for (const item of items) {
+-    subtotalCents += item.priceCents * item.qty;
++    subtotal += parseFloat(item.price) * item.qty;
+   }
+-  return subtotalCents;
++  // Convert dollars to cents
++  return Math.round(subtotal * 100);
+ }
+ 
+ /**
+@@ -61,7 +65,7 @@ export function applyLateFee(totalCents: number): number {
+ 
+ /**
+  * Build the full invoice totals from a list of line items.
+- * @param items       Line items (prices in cents)
++ * @param items       Line items (prices as decimal dollar strings)
+  * @param taxRateBp   Tax rate in basis points (e.g. 850 for 8.5%)
+  * @param isLate      Whether a late-payment surcharge applies
+  */

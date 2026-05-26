@@ -1,0 +1,1 @@
+{"file":"src/plugins/rate-limit.ts","lines":"29-31","why_benign":"windowBucket uses Math.floor for intended fixed-window bucketing; the integer truncation is correct by design, not a precision bug."}

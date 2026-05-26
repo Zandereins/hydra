@@ -7,6 +7,6 @@ is not, Fastify waits indefinitely, hanging every incoming request. The
 misleading comment in the diff ("done() must not be called") creates a
 false sense of correctness while violating the plugin contract.
 
-**Ground truth:** 1 MODERATE finding (`api_break`).
+**Ground truth:** 3 findings — 1 mandatory MODERATE (`api_break`, async hook omits `done()`) + 2 optional (`other`, `request.ip` without trustProxy; `other`, dead `RateLimitOptions`/`DEFAULT_MAX`). Plus a benign distractor (`Math.floor` fixed-window bucket).
 **Category:** api.
 **Expected position:** CONCERN.

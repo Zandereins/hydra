@@ -1,0 +1,1 @@
+{"file":"src/services/user-posts.ts","lines":"26-28","why_benign":"getUserPostCount issues a single COUNT aggregate query, not a per-row fetch — it is not an N+1 pattern and flagging it as one is a false positive."}

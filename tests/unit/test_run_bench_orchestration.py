@@ -77,9 +77,9 @@ def test_load_ground_truth_validates_and_carries_keywords():
         assert row["must_mention"], "validated ground truth must carry >=1 keyword"
 
 
-def test_discover_cases_finds_all_five():
+def test_discover_cases_finds_all_eight():
     cases = discover_cases()
-    assert len(cases) == 5
+    assert len(cases) == 8  # 5 original + 3 new (concurrency/data/api) — Track-3 P2
     assert "01-axios-header-injection" in cases
 
 
@@ -89,9 +89,9 @@ def test_fast_bench_is_two_cases_one_run():
     assert all(r.runs == 1 and r.hydra_mode == "standard" for r in runs)
 
 
-def test_full_bench_is_five_cases_standard_and_deep_three_runs():
+def test_full_bench_is_eight_cases_standard_and_deep_three_runs():
     runs = plan_runs(mode="full")
-    assert len({r.case_id for r in runs}) == 5
+    assert len({r.case_id for r in runs}) == 8
     modes = {(r.case_id, r.hydra_mode) for r in runs}
-    assert len(modes) == 10  # 5 cases x {standard, deep}
+    assert len(modes) == 16  # 8 cases x {standard, deep}
     assert all(r.runs == 3 for r in runs)

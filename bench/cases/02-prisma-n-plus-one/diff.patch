@@ -1,9 +1,11 @@
+diff --git a/src/services/user-posts.ts b/src/services/user-posts.ts
+index a612e62..13236e7 100644
 --- a/src/services/user-posts.ts
 +++ b/src/services/user-posts.ts
-@@ -12,7 +12,13 @@ import { prisma } from "../lib/prisma";
+@@ -12,9 +12,15 @@ const DEFAULT_LIMIT = 100;
  export async function getUsersWithPosts(): Promise<UserWithPosts[]> {
    const users = await prisma.user.findMany();
-
+ 
 -  return prisma.user.findMany({
 -    include: { posts: true },
 -  });
@@ -17,3 +19,5 @@
 +  }
 +  return results;
  }
+ 
+ export async function getUserPostCount(userId: string): Promise<number> {

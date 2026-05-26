@@ -1,0 +1,41 @@
+diff --git a/src/routes/users.ts b/src/routes/users.ts
+index eb769ae..6bdc823 100644
+--- a/src/routes/users.ts
++++ b/src/routes/users.ts
+@@ -17,11 +17,12 @@ router.get("/:id", async (req: Request, res: Response) => {
+     return res.status(404).json({ error: "User not found" });
+   }
+ 
++  // BREAKING: renamed userId -> id (number -> string), dropped email field.
+   return res.json({
+-    userId: user.id,
+-    email: user.email,
++    id: String(user.id),
+     displayName: user.displayName,
+     role: user.role,
++    passwordHash: user.passwordHash,
+   });
+ });
+ 
+@@ -30,14 +31,15 @@ router.get("/:id", async (req: Request, res: Response) => {
+ router.get("/", async (_req: Request, res: Response) => {
+   const users = await db.users.findMany({ orderBy: { id: "asc" } });
+ 
+-  return res.json(
+-    users.map((u) => ({
+-      userId: u.id,
+-      email: u.email,
++  // BREAKING: wraps the array in an object { data: [...] } instead of returning
++  // the array at the top level, breaking clients that do `response.map(...)`.
++  return res.json({
++    data: users.map((u) => ({
++      id: String(u.id),
+       displayName: u.displayName,
+       role: u.role,
+-    }))
+-  );
++    })),
++  });
+ });
+ 
+ // POST /users — creates a new user and returns the created record.
