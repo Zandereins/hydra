@@ -1,4 +1,17 @@
-from bench.runner.run_bench import FAST_BENCH_CASES, discover_cases, plan_runs
+from bench.runner.run_bench import (
+    FAST_BENCH_CASES,
+    discover_cases,
+    load_ground_truth,
+    plan_runs,
+)
+
+
+def test_load_ground_truth_validates_and_carries_keywords():
+    # load_ground_truth must go through GroundTruthFinding (must_mention enforced)
+    rows = load_ground_truth("01-axios-header-injection")
+    assert rows
+    for row in rows:
+        assert row["must_mention"], "validated ground truth must carry >=1 keyword"
 
 
 def test_discover_cases_finds_all_five():

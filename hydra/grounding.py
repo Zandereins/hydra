@@ -15,6 +15,7 @@ from hydra.envelopes import AdvisorFinding, GroundingStatus, Position, Severity
 from hydra.path_safety import PathEscapeError, contained_path
 
 DEFAULT_MAX_LINES = 200  # DoS cap: never read more than this many lines for one citation
+DEFAULT_MAX_LINE_BYTES = 4096  # DoS cap: bound bytes per line (pathological minified files)
 
 
 def _parse_line_range(lines: str) -> tuple[int, int] | None:
@@ -35,25 +36,34 @@ def _parse_line_range(lines: str) -> tuple[int, int] | None:
     return a, b
 
 
-def read_range(path: Path, lines: str, *, max_lines: int = DEFAULT_MAX_LINES) -> str | None:
+def read_range(
+    path: Path,
+    lines: str,
+    *,
+    max_lines: int = DEFAULT_MAX_LINES,
+    max_line_bytes: int = DEFAULT_MAX_LINE_BYTES,
+) -> str | None:
     """Return the cited source lines joined by '\\n', or None if unresolvable.
 
-    Bounds-checks the range against the file and caps the number of lines read
-    (DoS guard against a malicious `lines: "1-99999999"`).
+    Bounds-checks the range against the file and caps BOTH the line count and the
+    bytes read (spec §6): a hard ceiling of ``max_lines * max_line_bytes`` chars is
+    read regardless of line structure, so a pathological single-line (minified) file
+    cannot be slurped whole. Each returned line is itself truncated to max_line_bytes.
     """
     parsed = _parse_line_range(lines)
     if parsed is None:
         return None
     start, end = parsed
     end = min(end, start + max_lines - 1)
-    selected: list[str] = []
+    budget = max_lines * max_line_bytes
     with path.open("r", encoding="utf-8", errors="replace") as fh:
-        for idx, line in enumerate(fh, start=1):
-            if idx < start:
-                continue
-            if idx > end:
-                break
-            selected.append(line.rstrip("\n"))
+        chunk = fh.read(budget + 1)  # +1 only to detect (and discard) overflow
+    file_lines = chunk.split("\n")
+    if file_lines and file_lines[-1] == "" and chunk.endswith("\n"):
+        file_lines.pop()  # a trailing newline yields a phantom "" element — not a real line
+    if start > len(file_lines):
+        return None
+    selected = [ln[:max_line_bytes] for ln in file_lines[start - 1 : end]]
     return "\n".join(selected) if selected else None
 
 

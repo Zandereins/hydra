@@ -11,6 +11,7 @@ from typing import Any, cast
 
 import yaml
 
+from bench.runner.models import GroundTruthFinding
 from bench.runner.scoring import CaseScore, score_case
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,8 +51,14 @@ def plan_runs(*, mode: str) -> list[RunSpec]:
 
 
 def load_ground_truth(case_id: str) -> list[dict[str, Any]]:
+    """Load + validate ground truth via GroundTruthFinding (enforces must_mention,
+    extra='forbid') so a malformed case fails loudly at load, not silently at scoring."""
     path = CASES_DIR / case_id / "expected_findings.jsonl"
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    return [
+        GroundTruthFinding.model_validate_json(line).model_dump(mode="json")
+        for line in path.read_text().splitlines()
+        if line.strip()
+    ]
 
 
 def load_manifest(case_id: str) -> dict[str, Any]:

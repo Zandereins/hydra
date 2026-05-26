@@ -20,7 +20,6 @@ class CaseScore:
 class FindingMatch:
     ground_truth_idx: int
     candidate_idx: int
-    score: float
 
 
 def _parse_range(lines: str) -> tuple[int, int]:
@@ -85,7 +84,7 @@ def score_case(
             if ci in used:
                 continue
             if _is_match(gt, cand, judge):
-                matches.append(FindingMatch(gi, ci, 1.0))
+                matches.append(FindingMatch(gi, ci))
                 used.add(ci)
                 break
 
