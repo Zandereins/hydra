@@ -58,7 +58,8 @@ def test_one_x_candidate_omits_default_issue_class() -> None:
 def test_structured_extractor_reads_advisor_findings() -> None:
     payload = [{
         "id": "f1", "title": "CRLF", "severity": "SERIOUS", "evidence": "VERIFIED",
-        "position": "CONCERN", "file": "app.js", "lines": "10-12", "issue_class": "command_injection",
+        "position": "CONCERN", "file": "app.js", "lines": "10-12",
+        "issue_class": "command_injection",
         "chain": {"premise": "p", "execution_trace": "", "conclusion": "c"},
     }]
     cands = extract_from_structured("\n".join(json.dumps(p) for p in payload))

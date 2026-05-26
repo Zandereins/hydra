@@ -105,7 +105,10 @@ def _cand(
     title: str = "CRLF header injection",
     severity: str = "SERIOUS",
 ) -> dict[str, object]:
-    return {"file": file, "lines": lines, "title": title, "severity": severity, "issue_class": "other"}
+    return {
+        "file": file, "lines": lines, "title": title,
+        "severity": severity, "issue_class": "other",
+    }
 
 
 def test_range_tol_is_five() -> None:
