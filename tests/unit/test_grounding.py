@@ -76,3 +76,68 @@ def test_demote_drops_one_rung():
 
 def test_demote_floor_is_trivial():
     assert demote(Severity.TRIVIAL) == Severity.TRIVIAL
+
+
+from hydra.grounding import CITATION_THRESHOLD, ground_finding
+
+
+def test_safety_position_not_applicable(tmp_path):  # type: ignore[no-untyped-def]
+    f = _finding(position=Position.APPROVE)
+    ground_finding(f, tmp_path)
+    assert f.grounding == GroundingStatus.NOT_APPLICABLE
+
+
+def test_trivial_severity_not_applicable(tmp_path):  # type: ignore[no-untyped-def]
+    f = _finding(severity=Severity.TRIVIAL)
+    ground_finding(f, tmp_path)
+    assert f.grounding == GroundingStatus.NOT_APPLICABLE
+
+
+def test_no_citation_demotes(tmp_path):  # type: ignore[no-untyped-def]
+    f = _finding(file=None, lines=None, severity=Severity.SERIOUS)
+    ground_finding(f, tmp_path)
+    assert f.grounding == GroundingStatus.NO_CITATION
+    assert f.severity == Severity.MODERATE  # demoted one rung
+
+
+def test_path_escape_flagged(tmp_path):  # type: ignore[no-untyped-def]
+    f = _finding(file="../../etc/passwd", lines="1-2")
+    ground_finding(f, tmp_path)
+    assert f.grounding == GroundingStatus.PATH_ESCAPE
+
+
+def test_file_missing_demotes(tmp_path):  # type: ignore[no-untyped-def]
+    f = _finding(file="nope.js", lines="1-2", severity=Severity.SERIOUS)
+    ground_finding(f, tmp_path)
+    assert f.grounding == GroundingStatus.FILE_MISSING
+    assert f.severity == Severity.MODERATE
+
+
+def test_range_missing_demotes(tmp_path):  # type: ignore[no-untyped-def]
+    (tmp_path / "lib").mkdir(parents=True)
+    (tmp_path / "lib" / "core").mkdir()
+    (tmp_path / "lib" / "core" / "AxiosHeaders.js").write_text("a\nb\n")
+    f = _finding(lines="50-60", severity=Severity.SERIOUS)
+    ground_finding(f, tmp_path)
+    assert f.grounding == GroundingStatus.RANGE_MISSING
+    assert f.severity == Severity.MODERATE
+
+
+def test_citation_present_when_tokens_match(tmp_path):  # type: ignore[no-untyped-def]
+    p = tmp_path / "lib" / "core"
+    p.mkdir(parents=True)
+    (p / "AxiosHeaders.js").write_text("\n" * 141 + "setHeader(name){ /* CRLF injection */ }\n" * 17)
+    f = _finding(severity=Severity.SERIOUS)
+    ground_finding(f, tmp_path)
+    assert f.grounding == GroundingStatus.CITATION_PRESENT
+    assert f.severity == Severity.SERIOUS  # not demoted
+
+
+def test_token_mismatch_demotes(tmp_path):  # type: ignore[no-untyped-def]
+    p = tmp_path / "lib" / "core"
+    p.mkdir(parents=True)
+    (p / "AxiosHeaders.js").write_text("\n" * 141 + "unrelated boring code\n" * 17)
+    f = _finding(severity=Severity.SERIOUS)
+    ground_finding(f, tmp_path)
+    assert f.grounding == GroundingStatus.TOKEN_MISMATCH
+    assert f.severity == Severity.MODERATE
