@@ -1,12 +1,17 @@
 """Parse Hydra reports to candidate findings for bench scoring."""
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from hydra.envelopes import AdvisorFinding
+
+SIDECAR_SCHEMA_VERSION = "1.0"  # `.findings.json` contract (Track-3 Component A)
 
 # Real reports prepend a `<!-- hydra-integrity: ... -->` line before the YAML
 # frontmatter; strip it so `startswith("---")` works (verified against a live report).
@@ -117,18 +122,63 @@ def extract_from_report(markdown: str) -> list[dict[str, Any]]:
     return _from_actions_body(markdown) or _from_frontmatter(markdown)
 
 
+def _candidate_from_finding(f: AdvisorFinding) -> dict[str, Any]:
+    return {
+        "title": f.title,
+        "file": f.file,
+        "lines": f.lines or "",
+        "severity": f.severity.value,
+        "issue_class": f.issue_class.value,
+    }
+
+
 def extract_from_structured(jsonl: str) -> list[dict[str, Any]]:
     """Extract candidates from a 2.0 AdvisorFinding JSONL (grounding CLI output)."""
     candidates: list[dict[str, Any]] = []
     for line in jsonl.splitlines():
         if not line.strip():
             continue
-        f = AdvisorFinding.model_validate_json(line)
-        candidates.append({
-            "title": f.title,
-            "file": f.file,
-            "lines": f.lines or "",
-            "severity": f.severity.value,
-            "issue_class": f.issue_class.value,
-        })
+        candidates.append(_candidate_from_finding(AdvisorFinding.model_validate_json(line)))
     return candidates
+
+
+def extract_from_sidecar(text: str) -> list[dict[str, Any]]:
+    """Candidates from a `.findings.json` sidecar: {schema_version, findings:[AdvisorFinding...]}.
+
+    The structured, format-stable contract (Track-3 Component A) — preferred over scraping
+    the prose report. Schema-version gated; each finding validated via AdvisorFinding
+    (extra='forbid'). Malformed JSON / version mismatch / bad findings -> [] (caller falls
+    back to the prose report) — never crashes.
+    """
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(obj, dict) or obj.get("schema_version") != SIDECAR_SCHEMA_VERSION:
+        return []
+    findings = obj.get("findings")
+    if not isinstance(findings, list):
+        return []
+    candidates: list[dict[str, Any]] = []
+    for raw in findings:
+        try:
+            candidates.append(_candidate_from_finding(AdvisorFinding.model_validate(raw)))
+        except ValidationError:
+            continue
+    return candidates
+
+
+def sidecar_path_for(report_path: Path) -> Path:
+    """`.../hydra-<ts>-<slug>.md` -> `.../hydra-<ts>-<slug>.findings.json`."""
+    return report_path.with_suffix(".findings.json")
+
+
+def extract_candidates(report_path: Path) -> list[dict[str, Any]]:
+    """Candidates for a report: prefer the structured `.findings.json` sidecar, fall back
+    to scraping the prose `.md` (1.x / missing or empty sidecar)."""
+    sidecar = sidecar_path_for(report_path)
+    if sidecar.exists():
+        cands = extract_from_sidecar(sidecar.read_text())
+        if cands:
+            return cands
+    return extract_from_report(report_path.read_text())

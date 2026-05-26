@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "findings": [
+    {
+      "id": "A1",
+      "title": "async onRequest hook declares an unused done parameter",
+      "severity": "CATASTROPHIC",
+      "evidence": "VERIFIED",
+      "position": "REJECT",
+      "file": "src/plugins/rate-limit.ts",
+      "lines": "15,21-22",
+      "issue_class": "api_break",
+      "chain": {
+        "premise": "async onRequest hook keeps a done parameter",
+        "execution_trace": "",
+        "conclusion": "FST_ERR_HOOK_INVALID_ASYNC_HANDLER at boot; hangs every request"
+      }
+    },
+    {
+      "id": "A2",
+      "title": "unguarded await store.check has no fail-open/closed policy",
+      "severity": "SERIOUS",
+      "evidence": "HYPOTHESIS_HIGH",
+      "position": "CONCERN",
+      "file": "src/plugins/rate-limit.ts",
+      "lines": "16",
+      "issue_class": "other",
+      "chain": {
+        "premise": "await store.check has no try/catch",
+        "execution_trace": "",
+        "conclusion": "store outage takes down request handling"
+      }
+    }
+  ]
+}
