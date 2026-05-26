@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from hydra.envelopes import AdvisorFinding
+from hydra.envelopes import AdvisorFinding, Severity
 
 DEFAULT_MAX_LINES = 200  # DoS cap: never read more than this many lines for one citation
 
@@ -86,3 +86,21 @@ def count_present(tokens: list[str], text: str) -> int:
     """How many tokens appear (case-insensitive substring) in text."""
     lowered = text.lower()
     return sum(1 for t in tokens if t.lower() in lowered)
+
+
+# Full ladder (spec §5.1). NOTE divergence: the shipped *prompt* Grounding-Lite
+# floors at MODERATE because its vocab is coarser; the deterministic check uses
+# all five rungs with a TRIVIAL floor.
+_SEVERITY_LADDER: tuple[Severity, ...] = (
+    Severity.CATASTROPHIC,
+    Severity.SERIOUS,
+    Severity.MODERATE,
+    Severity.MINOR,
+    Severity.TRIVIAL,
+)
+
+
+def demote(severity: Severity) -> Severity:
+    """Drop exactly one rung; TRIVIAL is the floor."""
+    idx = _SEVERITY_LADDER.index(severity)
+    return _SEVERITY_LADDER[min(idx + 1, len(_SEVERITY_LADDER) - 1)]
