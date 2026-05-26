@@ -108,12 +108,35 @@ def write_baseline(
     output_path.write_text(json.dumps(payload, indent=2))
 
 
-def _run_mode(mode: str, baseline_out: Path | None) -> None:
+def _median_f1_by_case(run_records: list[dict[str, Any]]) -> dict[str, float]:
+    """Median F1 per case across the captured runs (the comparison surface for the gate)."""
+    by_case: dict[str, list[float]] = {}
+    for run in run_records:
+        for case_id, score in run["scores"].items():
+            by_case.setdefault(case_id, []).append(score.f1)
+    return {case_id: statistics.median(v) for case_id, v in by_case.items()}
+
+
+def gate_against_baseline(current_f1: dict[str, float], baseline_path: Path) -> int:
+    """Compare current median F1 against a committed baseline; return exit code (1 on
+    release regression, else 0). Prints the report. Wires report.check_regression into CI."""
+    from bench.runner.report import check_regression, render
+
+    baseline = json.loads(baseline_path.read_text())
+    result = check_regression(baseline, current_f1)
+    print(render(result))
+    return 1 if result.failed else 0
+
+
+def _run_mode(
+    mode: str, *, baseline_out: Path | None = None, check_baseline: Path | None = None
+) -> int:
     """Drive invoke -> extract -> score -> aggregate for fast/full bench modes.
 
-    The live invoke path calls ``bench.runner.invoke_hydra_1x.invoke_hydra``;
-    it is cost-gated (Task 16) and not exercised by unit tests — but must
-    remain importable and type-clean so the orchestrator can call it.
+    Then EITHER write a baseline (capture) OR gate against an existing baseline
+    (``check_baseline`` -> exit code). The live invoke path calls
+    ``invoke_hydra`` and is cost-gated (not unit-tested); the aggregate + gate
+    helpers (`_median_f1_by_case`, `gate_against_baseline`) are unit-tested.
     """
     import shutil
 
@@ -131,7 +154,6 @@ def _run_mode(mode: str, baseline_out: Path | None) -> None:
     judge = resolve_judge(client=client, model="claude-haiku-4-5-20251001")
 
     specs = plan_runs(mode=mode)
-    # Collect per-run scores grouped by case_id for median aggregation.
     run_records: list[dict[str, Any]] = []
     for spec in specs:
         scores_this_run: dict[str, CaseScore] = {}
@@ -146,52 +168,50 @@ def _run_mode(mode: str, baseline_out: Path | None) -> None:
                 shutil.rmtree(workspace, ignore_errors=True)
         run_records.append({"scores": scores_this_run})
 
+    if check_baseline is not None:
+        return gate_against_baseline(_median_f1_by_case(run_records), check_baseline)
+
     ts = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     out = baseline_out or (BASELINES_DIR / f"run-{mode}-{ts}.json")
     write_baseline(label=mode, commit_sha="HEAD", runs=run_records, output_path=out)
     print(f"baseline -> {out}")
+    return 0
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    sub = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(dest="command", required=True)
 
-    # Legacy single-case path
     single = sub.add_parser("score", help="score a single case against a candidates file")
     single.add_argument("--case", required=True, help="case id (e.g. 01-axios-header-injection)")
     single.add_argument("--candidates", required=True, type=Path)
     single.add_argument("--json", action="store_true")
 
-    # Orchestrated bench paths
     bench = sub.add_parser("bench", help="run fast or full bench")
     bench.add_argument("--mode", choices=["fast", "full"], required=True)
     bench.add_argument("--baseline-out", type=Path, default=None)
-
-    # Back-compat: when called with --case directly (original API)
-    parser.add_argument("--case", default=None)
-    parser.add_argument("--candidates", default=None, type=Path)
-    parser.add_argument("--json", action="store_true")
+    bench.add_argument(
+        "--check-baseline",
+        type=Path,
+        default=None,
+        help="compare results against this baseline and exit 1 on release regression",
+    )
 
     args = parser.parse_args()
 
     if args.command == "bench":
-        _run_mode(args.mode, args.baseline_out)
-        return
+        raise SystemExit(
+            _run_mode(args.mode, baseline_out=args.baseline_out, check_baseline=args.check_baseline)
+        )
 
-    # Legacy fallback: no subcommand, --case given directly
-    case_id = getattr(args, "case", None)
-    candidates_path = getattr(args, "candidates", None)
-    if case_id and candidates_path:
-        score = run_single_case(case_id, candidates_path)
-        if getattr(args, "json", False):
-            print(json.dumps(score.__dict__, indent=2))
-        else:
-            print(
-                f"Case {case_id}: F1={score.f1:.2f} R={score.recall:.2f} "
-                f"P={score.precision:.2f} crit_R={score.critical_recall:.2f}"
-            )
+    score = run_single_case(args.case, args.candidates)
+    if args.json:
+        print(json.dumps(score.__dict__, indent=2))
     else:
-        parser.print_help()
+        print(
+            f"Case {args.case}: F1={score.f1:.2f} R={score.recall:.2f} "
+            f"P={score.precision:.2f} crit_R={score.critical_recall:.2f}"
+        )
 
 
 if __name__ == "__main__":

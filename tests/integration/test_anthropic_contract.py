@@ -15,17 +15,17 @@ def test_messages_parse_and_output_format_param_exist():
     assert "temperature" in params
 
 
-def test_usage_exposes_token_fields():
-    from anthropic.types import Usage
+def test_parsed_message_exposes_parsed_output():
+    # judge.py reads msg.parsed_output to get the JudgeVerdict — guard that surface.
+    from anthropic.types.parsed_message import ParsedMessage
 
-    fields = set(Usage.model_fields)
-    for required in ("input_tokens", "output_tokens", "cache_read_input_tokens"):
-        assert required in fields
+    assert hasattr(ParsedMessage, "parsed_output")
 
 
 @pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="no API key")
 def test_live_parse_roundtrip():
     from anthropic import Anthropic
+
     from bench.runner.judge import JudgeVerdict
 
     client = Anthropic()

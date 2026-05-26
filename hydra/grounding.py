@@ -8,7 +8,7 @@ title + chain.premise + chain.conclusion.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from hydra.envelopes import AdvisorFinding, GroundingStatus, Position, Severity
@@ -19,21 +19,31 @@ DEFAULT_MAX_LINE_BYTES = 4096  # DoS cap: bound bytes per line (pathological min
 
 
 def _parse_line_range(lines: str) -> tuple[int, int] | None:
-    """Parse a citation range string ('N' or 'N-M', 1-indexed inclusive)."""
-    s = lines.strip()
-    if not s:
+    """Parse a 1-indexed line spec to (min_start, max_end).
+
+    Accepts single ('142'), range ('142-158'), and comma multi-span
+    ('15,21-22' -> (15, 22)) — real Hydra citations use all three forms, matching
+    bench scoring's grammar. Returns None if any part is unparseable or reversed/zero.
+    """
+    spans: list[tuple[int, int]] = []
+    for part in lines.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            if "-" in part:
+                a_str, b_str = part.split("-", 1)
+                a, b = int(a_str), int(b_str)
+            else:
+                a = b = int(part)
+        except ValueError:
+            return None
+        if a < 1 or b < a:
+            return None
+        spans.append((a, b))
+    if not spans:
         return None
-    try:
-        if "-" in s:
-            a_str, b_str = s.split("-", 1)
-            a, b = int(a_str), int(b_str)
-        else:
-            a = b = int(s)
-    except ValueError:
-        return None
-    if a < 1 or b < a:
-        return None
-    return a, b
+    return min(s for s, _ in spans), max(e for _, e in spans)
 
 
 def read_range(
@@ -76,8 +86,8 @@ _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 MAX_TOKENS = 8
 
 
-def extract_salient_tokens(finding: AdvisorFinding, *, max_tokens: int = MAX_TOKENS) -> list[str]:
-    """Identifiers / call names from title + chain.premise + chain.conclusion.
+def extract_salient_tokens(finding: AdvisorFinding) -> list[str]:
+    """Up to MAX_TOKENS identifiers / call names from title + chain.premise + conclusion.
 
     RECONCILE-1: spec §5.1's `chain.code_construct` does not exist; the real
     free-text code-claim fields are title + premise + conclusion.
@@ -89,7 +99,7 @@ def extract_salient_tokens(finding: AdvisorFinding, *, max_tokens: int = MAX_TOK
             continue
         if match not in seen:
             seen.append(match)
-        if len(seen) >= max_tokens:
+        if len(seen) >= MAX_TOKENS:
             break
     return seen
 
@@ -184,20 +194,29 @@ class GroundingSummary:
     not_applicable: int
     demoted: int
     dropped: int
+    demoted_breakdown: dict[str, int] = field(default_factory=dict)
 
     def render(self) -> str:
         pct = (100.0 * self.citation_present / self.total) if self.total else 0.0
+        demoted_line = f"- Auto-demoted: {self.demoted}"
+        parts = [f"{n} {status}" for status, n in sorted(self.demoted_breakdown.items()) if n]
+        if parts:
+            demoted_line += f" ({', '.join(parts)})"
         return (
             "## Grounding Summary\n"
             f"- Findings total: {self.total}\n"
             f"- CITATION_PRESENT: {self.citation_present} ({pct:.1f}%)\n"
             f"- NOT_APPLICABLE (safety claim): {self.not_applicable}\n"
-            f"- Auto-demoted: {self.demoted}\n"
+            f"{demoted_line}\n"
             f"- Dropped (PATH_ESCAPE): {self.dropped}"
         )
 
 
 def summarize(findings: list[AdvisorFinding]) -> GroundingSummary:
+    breakdown = {
+        status.value: sum(1 for f in findings if f.grounding == status)
+        for status in _DEMOTED_STATUSES
+    }
     return GroundingSummary(
         total=len(findings),
         citation_present=sum(
@@ -208,4 +227,5 @@ def summarize(findings: list[AdvisorFinding]) -> GroundingSummary:
         ),
         demoted=sum(1 for f in findings if f.grounding in _DEMOTED_STATUSES),
         dropped=sum(1 for f in findings if f.grounding == GroundingStatus.PATH_ESCAPE),
+        demoted_breakdown=breakdown,
     )
