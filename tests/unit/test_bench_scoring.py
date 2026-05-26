@@ -115,6 +115,13 @@ def test_range_tol_is_five() -> None:
     assert RANGE_TOL == 5
 
 
+def test_parse_ranges_caps_pathological_span_count() -> None:
+    from bench.runner.scoring import _MAX_SPANS, _parse_ranges
+
+    spec = ",".join(str(i) for i in range(1, 500))  # 499 comma-spans
+    assert len(_parse_ranges(spec)) == _MAX_SPANS  # bounded against adversarial mega-spec
+
+
 def test_comma_separated_candidate_lines_match() -> None:
     # real reports cite multi-span lines like "15,21-22"; any sub-span must overlap the GT
     gt = [_gt(file="rate-limit.ts", lines="16-28", must_mention=("done", "async"))]

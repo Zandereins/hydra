@@ -16,6 +16,7 @@ from hydra.path_safety import PathEscapeError, contained_path
 
 DEFAULT_MAX_LINES = 200  # DoS cap: never read more than this many lines for one citation
 DEFAULT_MAX_LINE_BYTES = 4096  # DoS cap: bound bytes per line (pathological minified files)
+_MAX_LINE_SPANS = 32  # DoS cap: bound comma-spans parsed from one citation
 
 
 def _parse_line_range(lines: str) -> tuple[int, int] | None:
@@ -26,7 +27,7 @@ def _parse_line_range(lines: str) -> tuple[int, int] | None:
     bench scoring's grammar. Returns None if any part is unparseable or reversed/zero.
     """
     spans: list[tuple[int, int]] = []
-    for part in lines.split(","):
+    for part in lines.split(",")[:_MAX_LINE_SPANS]:
         part = part.strip()
         if not part:
             continue

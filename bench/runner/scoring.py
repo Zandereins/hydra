@@ -22,14 +22,19 @@ class FindingMatch:
     candidate_idx: int
 
 
+_MAX_SPANS = 32  # cap comma-spans so a pathological candidate can't drive O(n*m) overlap
+
+
 def _parse_ranges(spec: str) -> list[tuple[int, int]]:
     """Parse a line spec into (start, end) pairs.
 
     Handles single ('15'), range ('13-23'), and comma-separated multi-spans
     ('15,21-22' -> [(15,15),(21,22)]) — real Hydra reports cite all three forms.
+    At most _MAX_SPANS spans are parsed (real citations have a handful; the cap
+    bounds the matcher against an adversarial mega-spec).
     """
     out: list[tuple[int, int]] = []
-    for part in spec.split(","):
+    for part in spec.split(",")[:_MAX_SPANS]:
         part = part.strip()
         if not part:
             continue

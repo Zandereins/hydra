@@ -119,10 +119,27 @@ def _median_f1_by_case(run_records: list[dict[str, Any]]) -> dict[str, float]:
 
 def gate_against_baseline(current_f1: dict[str, float], baseline_path: Path) -> int:
     """Compare current median F1 against a committed baseline; return exit code (1 on
-    release regression, else 0). Prints the report. Wires report.check_regression into CI."""
+    release regression, else 0). Prints the report.
+
+    ADVISORY when the baseline is a single retried run per case (the current 1.x
+    baseline): the spec §11.7 ≥10pp/≥2-of-5 rule's statistical basis assumes
+    median-of-N runs and multi-finding ground truth. Against a single-run, one-GT-
+    per-case baseline the gate is variance-prone and structurally blind to a
+    single-case quality loss (which only soft-warns). Do NOT wire this into a
+    *blocking* CI step until the median-of-N baseline + multi-finding cases land
+    (deferred, spec §11.9 amendment). It prints an [ADVISORY] banner in that case.
+    """
     from bench.runner.report import check_regression, render
 
     baseline = json.loads(baseline_path.read_text())
+    single_run = all(
+        len(c.get("runs", [])) <= 1 for c in baseline.get("cases", {}).values()
+    )
+    if single_run:
+        print(
+            "[ADVISORY] single-run baseline — gate is variance-prone and blind to "
+            "single-case loss; treat as a smoke signal, not a blocking gate (spec §11.7)."
+        )
     result = check_regression(baseline, current_f1)
     print(render(result))
     return 1 if result.failed else 0
