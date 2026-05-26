@@ -39,11 +39,13 @@ def _parse_ranges(spec: str) -> list[tuple[int, int]]:
         if not part:
             continue
         if "-" in part:
-            a, b = part.split("-", 1)
-            out.append((int(a), int(b)))
+            a_str, b_str = part.split("-", 1)
+            a, b = int(a_str), int(b_str)
         else:
-            n = int(part)
-            out.append((n, n))
+            a = b = int(part)
+        if a < 1 or b < a:
+            continue  # skip zero/negative/reversed spans (matches grounding's validation)
+        out.append((a, b))
     return out
 
 

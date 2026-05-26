@@ -3,7 +3,7 @@ from pathlib import Path
 
 from bench.runner.run_bench import (
     FAST_BENCH_CASES,
-    _median_f1_by_case,
+    _median_metric_by_case,
     discover_cases,
     gate_against_baseline,
     load_ground_truth,
@@ -12,32 +12,54 @@ from bench.runner.run_bench import (
 from bench.runner.scoring import CaseScore
 
 
-def _score(f1: float) -> CaseScore:
+def _score(f1: float, critical_recall: float = 1.0) -> CaseScore:
     return CaseScore(
-        recall=f1, precision=f1, f1=f1, critical_recall=f1, matched=1, missed=0, noise=0
+        recall=f1, precision=f1, f1=f1, critical_recall=critical_recall,
+        matched=1, missed=0, noise=0,
     )
 
 
-def test_median_f1_by_case_takes_median_across_runs() -> None:
+def _multi_run_baseline(cr_by_case: dict[str, float]) -> dict[str, object]:
+    # >=2 runs/case so gate_against_baseline treats it as NON single-run (can hard-fail)
+    return {
+        "cases": {
+            c: {"median_critical_recall": cr, "median_f1": 0.5, "runs": [{}, {}, {}]}
+            for c, cr in cr_by_case.items()
+        }
+    }
+
+
+def test_median_metric_by_case_takes_median_across_runs() -> None:
     runs = [
         {"scores": {"c1": _score(0.4)}},
         {"scores": {"c1": _score(0.6)}},
         {"scores": {"c1": _score(0.5)}},
     ]
-    assert _median_f1_by_case(runs) == {"c1": 0.5}
+    assert _median_metric_by_case(runs, "f1") == {"c1": 0.5}
+    assert _median_metric_by_case(runs, "critical_recall") == {"c1": 1.0}
 
 
-def test_gate_passes_when_no_regression(tmp_path: Path, capsys) -> None:
+def test_gate_passes_when_no_regression(tmp_path: Path) -> None:
     bl = tmp_path / "baseline.json"
-    bl.write_text(json.dumps({"cases": {"c1": {"median_f1": 0.5}, "c2": {"median_f1": 0.5}}}))
-    assert gate_against_baseline({"c1": 0.5, "c2": 0.5}, bl) == 0
+    bl.write_text(json.dumps(_multi_run_baseline({"c1": 1.0, "c2": 1.0})))
+    assert gate_against_baseline({"c1": 1.0, "c2": 1.0}, bl) == 0
 
 
-def test_gate_fails_on_release_regression(tmp_path: Path, capsys) -> None:
+def test_gate_fails_on_release_regression_against_multi_run_baseline(tmp_path: Path) -> None:
     bl = tmp_path / "baseline.json"
-    bl.write_text(json.dumps({"cases": {"c1": {"median_f1": 0.8}, "c2": {"median_f1": 0.8}}}))
-    # both cases drop >=10pp -> release fail -> exit code 1
-    assert gate_against_baseline({"c1": 0.6, "c2": 0.6}, bl) == 1
+    bl.write_text(json.dumps(_multi_run_baseline({"c1": 1.0, "c2": 1.0})))
+    # both cases lose the mandatory finding (crit_recall 1->0) -> release fail -> exit 1
+    assert gate_against_baseline({"c1": 0.0, "c2": 0.0}, bl) == 1
+
+
+def test_single_run_baseline_is_advisory_only_never_hard_fails(tmp_path: Path) -> None:
+    # A single-run baseline (no/<=1 runs) must NEVER return exit 1, even on a regression.
+    bl = tmp_path / "baseline.json"
+    bl.write_text(json.dumps({"cases": {
+        "c1": {"median_critical_recall": 1.0, "runs": [{}]},
+        "c2": {"median_critical_recall": 1.0, "runs": [{}]},
+    }}))
+    assert gate_against_baseline({"c1": 0.0, "c2": 0.0}, bl) == 0  # advisory, despite regression
 
 
 def test_load_ground_truth_validates_and_carries_keywords():

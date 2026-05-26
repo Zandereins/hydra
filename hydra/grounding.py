@@ -66,15 +66,27 @@ def read_range(
         return None
     start, end = parsed
     end = min(end, start + max_lines - 1)
-    budget = max_lines * max_line_bytes
+    selected: list[str] = []
+    idx = 0
     with path.open("r", encoding="utf-8", errors="replace") as fh:
-        chunk = fh.read(budget + 1)  # +1 only to detect (and discard) overflow
-    file_lines = chunk.split("\n")
-    if file_lines and file_lines[-1] == "" and chunk.endswith("\n"):
-        file_lines.pop()  # a trailing newline yields a phantom "" element — not a real line
-    if start > len(file_lines):
-        return None
-    selected = [ln[:max_line_bytes] for ln in file_lines[start - 1 : end]]
+        # Stream line-by-line with a per-line byte cap: readline(max_line_bytes+1) reads
+        # at most that many chars OR up to the newline. This is correct for far-off cited
+        # lines (no whole-prefix buffering) AND bounds memory on a pathological single-line
+        # (minified) file — neither the old line-iterator nor the bulk-read+split did both.
+        while idx < end:
+            piece = fh.readline(max_line_bytes + 1)
+            if not piece:
+                break
+            idx += 1
+            if not piece.endswith("\n"):
+                # line longer than the cap (or EOF): drain the rest of the physical line
+                # without buffering it, so one giant line can't be slurped into memory.
+                while True:
+                    rest = fh.readline(max_line_bytes + 1)
+                    if not rest or rest.endswith("\n"):
+                        break
+            if idx >= start:
+                selected.append(piece.rstrip("\n")[:max_line_bytes])
     return "\n".join(selected) if selected else None
 
 
@@ -106,9 +118,15 @@ def extract_salient_tokens(finding: AdvisorFinding) -> list[str]:
 
 
 def count_present(tokens: list[str], text: str) -> int:
-    """How many tokens appear (case-insensitive substring) in text."""
+    """How many tokens appear in text as whole words (case-insensitive).
+
+    Word-boundary (not raw substring) so a short token like 'err' does not spuriously
+    match inside 'logger'/'stderr' — that over-matching inflated false CITATION_PRESENT.
+    """
     lowered = text.lower()
-    return sum(1 for t in tokens if t.lower() in lowered)
+    return sum(
+        1 for t in tokens if re.search(rf"\b{re.escape(t.lower())}\b", lowered)
+    )
 
 
 # Full ladder (spec §5.1). NOTE divergence: the shipped *prompt* Grounding-Lite
@@ -129,7 +147,8 @@ def demote(severity: Severity) -> Severity:
     return _SEVERITY_LADDER[min(idx + 1, len(_SEVERITY_LADDER) - 1)]
 
 
-CITATION_THRESHOLD = 0.4  # calibrated on bench cases during impl (spec §2.3); start here
+CITATION_THRESHOLD = 0.4  # starting point only — NOT yet calibrated (spec §2.3/§8 open item;
+#                           needs a labelled TP/FP sweep once a median-of-N baseline exists)
 
 _SAFETY_POSITIONS = frozenset({Position.APPROVE})
 _SAFETY_SEVERITIES = frozenset({Severity.TRIVIAL})
@@ -164,7 +183,10 @@ def ground_finding(
         finding.severity = demote(finding.severity)
         return finding
 
-    range_text = read_range(resolved, finding.lines)
+    try:
+        range_text = read_range(resolved, finding.lines)
+    except OSError:  # race / permission / unreadable between exists() and open()
+        range_text = None
     if range_text is None:
         finding.grounding = GroundingStatus.RANGE_MISSING
         finding.severity = demote(finding.severity)
@@ -196,6 +218,7 @@ class GroundingSummary:
     demoted: int
     dropped: int
     demoted_breakdown: dict[str, int] = field(default_factory=dict)
+    unknown: int = 0  # findings never grounded (default status) — should be 0 after a full run
 
     def render(self) -> str:
         pct = (100.0 * self.citation_present / self.total) if self.total else 0.0
@@ -203,6 +226,7 @@ class GroundingSummary:
         parts = [f"{n} {status}" for status, n in sorted(self.demoted_breakdown.items()) if n]
         if parts:
             demoted_line += f" ({', '.join(parts)})"
+        unknown_line = f"\n- ⚠ UNGROUNDED (UNKNOWN): {self.unknown}" if self.unknown else ""
         return (
             "## Grounding Summary\n"
             f"- Findings total: {self.total}\n"
@@ -210,6 +234,7 @@ class GroundingSummary:
             f"- NOT_APPLICABLE (safety claim): {self.not_applicable}\n"
             f"{demoted_line}\n"
             f"- Dropped (PATH_ESCAPE): {self.dropped}"
+            f"{unknown_line}"
         )
 
 
@@ -229,4 +254,5 @@ def summarize(findings: list[AdvisorFinding]) -> GroundingSummary:
         demoted=sum(1 for f in findings if f.grounding in _DEMOTED_STATUSES),
         dropped=sum(1 for f in findings if f.grounding == GroundingStatus.PATH_ESCAPE),
         demoted_breakdown=breakdown,
+        unknown=sum(1 for f in findings if f.grounding == GroundingStatus.UNKNOWN),
     )
