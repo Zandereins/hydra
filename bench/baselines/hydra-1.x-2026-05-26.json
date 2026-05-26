@@ -1,0 +1,92 @@
+{
+  "label": "hydra-1.x@3506f93-standard-1goodrun-retry-via-claude-print-nohooks",
+  "captured_at": "2026-05-26T15:24:49.692701+00:00",
+  "commit_sha": "3506f93",
+  "cases": {
+    "01-axios-header-injection": {
+      "median_f1": 0.5,
+      "median_recall": 1.0,
+      "median_precision": 0.3333333333333333,
+      "median_critical_recall": 1.0,
+      "runs": [
+        {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5,
+          "critical_recall": 1.0,
+          "matched": 1,
+          "missed": 0,
+          "noise": 2
+        }
+      ]
+    },
+    "02-prisma-n-plus-one": {
+      "median_f1": 0.5,
+      "median_recall": 1.0,
+      "median_precision": 0.3333333333333333,
+      "median_critical_recall": 1.0,
+      "runs": [
+        {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5,
+          "critical_recall": 1.0,
+          "matched": 1,
+          "missed": 0,
+          "noise": 2
+        }
+      ]
+    },
+    "03-oauth-pkce-downgrade": {
+      "median_f1": 0.5,
+      "median_recall": 1.0,
+      "median_precision": 0.3333333333333333,
+      "median_critical_recall": 1.0,
+      "runs": [
+        {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5,
+          "critical_recall": 1.0,
+          "matched": 1,
+          "missed": 0,
+          "noise": 2
+        }
+      ]
+    },
+    "04-react-effect-infinite-loop": {
+      "median_f1": 0.5,
+      "median_recall": 1.0,
+      "median_precision": 0.3333333333333333,
+      "median_critical_recall": 1.0,
+      "runs": [
+        {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5,
+          "critical_recall": 1.0,
+          "matched": 1,
+          "missed": 0,
+          "noise": 2
+        }
+      ]
+    },
+    "05-fastify-plugin-contract-break": {
+      "median_f1": 0.5,
+      "median_recall": 1.0,
+      "median_precision": 0.3333333333333333,
+      "median_critical_recall": 1.0,
+      "runs": [
+        {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5,
+          "critical_recall": 1.0,
+          "matched": 1,
+          "missed": 0,
+          "noise": 2
+        }
+      ]
+    }
+  }
+}
