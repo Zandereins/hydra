@@ -141,3 +141,28 @@ def test_token_mismatch_demotes(tmp_path):  # type: ignore[no-untyped-def]
     ground_finding(f, tmp_path)
     assert f.grounding == GroundingStatus.TOKEN_MISMATCH
     assert f.severity == Severity.MODERATE
+
+
+from hydra.grounding import GroundingSummary, summarize
+
+
+def test_summarize_counts_and_renders():
+    findings = [
+        _finding(),  # will be UNKNOWN until grounded; set explicitly below
+    ]
+    findings[0].grounding = GroundingStatus.CITATION_PRESENT
+    f2 = _finding(); f2.grounding = GroundingStatus.NOT_APPLICABLE
+    f3 = _finding(); f3.grounding = GroundingStatus.TOKEN_MISMATCH
+    f4 = _finding(); f4.grounding = GroundingStatus.PATH_ESCAPE
+    findings += [f2, f3, f4]
+
+    summary = summarize(findings)
+    assert isinstance(summary, GroundingSummary)
+    assert summary.total == 4
+    assert summary.citation_present == 1
+    assert summary.not_applicable == 1
+    assert summary.demoted == 1  # TOKEN_MISMATCH
+    assert summary.dropped == 1  # PATH_ESCAPE
+    rendered = summary.render()
+    assert "## Grounding Summary" in rendered
+    assert "CITATION_PRESENT: 1" in rendered
