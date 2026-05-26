@@ -132,7 +132,7 @@ def _capture_case_run(case_id: str, judge: object) -> tuple[CaseScore | None, li
     action-less are retried."""
     import shutil
 
-    from bench.runner.extract_findings import extract_from_report
+    from bench.runner.extract_findings import extract_candidates
     from bench.runner.invoke_hydra_1x import invoke_hydra, prepare_case_workspace
 
     outcomes: list[str] = []
@@ -141,7 +141,7 @@ def _capture_case_run(case_id: str, judge: object) -> tuple[CaseScore | None, li
         workspace = prepare_case_workspace(case_id)
         try:
             report_path = invoke_hydra(workspace)
-            candidates = extract_from_report(report_path.read_text())
+            candidates = extract_candidates(report_path)  # prefer .findings.json sidecar
             score = score_case(load_ground_truth(case_id), candidates, judge=judge)  # type: ignore[arg-type]
         except subprocess.TimeoutExpired:
             outcomes.append("timeout")

@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from bench.runner.extract_findings import extract_from_report
+from bench.runner.extract_findings import extract_candidates
 from bench.runner.run_bench import CASES_DIR, load_ground_truth, write_baseline
 from bench.runner.scoring import score_case
 from hydra.path_safety import PathEscapeError, contained_path
@@ -131,7 +131,7 @@ def main() -> None:
         workspace = prepare_case_workspace(case_id)
         try:
             report_path = invoke_hydra(workspace)
-            candidates = extract_from_report(report_path.read_text())
+            candidates = extract_candidates(report_path)  # prefer .findings.json sidecar
             candidates_out = REPO_ROOT / "bench" / "runs" / "1x" / f"{case_id}.jsonl"
             candidates_out.parent.mkdir(parents=True, exist_ok=True)
             candidates_out.write_text("\n".join(json.dumps(c) for c in candidates))
