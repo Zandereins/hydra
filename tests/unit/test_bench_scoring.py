@@ -164,3 +164,45 @@ def test_judge_not_called_when_range_fails() -> None:
     score = score_case([_gt(lines="10-20")], [_cand(lines="100-110", title="x")], judge=judge)
     assert score.matched == 0
     assert calls == []  # pre-filter rejected before judge
+
+
+# --- false_positive_rate: explicit distractor-resistance metric (Track-3 P2) ---
+
+def test_no_negative_anchors_means_zero_fp_rate() -> None:
+    score = score_case([_gt()], [_cand()])
+    assert score.false_positives == 0
+    assert score.false_positive_rate == 0.0
+
+
+def test_candidate_overlapping_negative_anchor_is_a_false_positive() -> None:
+    # GT at 10-20; a benign distractor lives at 40-42; a candidate flagging it = explicit FP
+    gt = [_gt(file="a.js", lines="10-20")]
+    cands = [
+        _cand(file="a.js", lines="12-14", title="CRLF header injection"),  # real match
+        _cand(file="a.js", lines="40-41", title="suspicious eval call"),    # FP on distractor
+    ]
+    neg = [{"file": "a.js", "lines": "40-42", "why_benign": "guarded eval behind a constant"}]
+    score = score_case(gt, cands, negative_anchors=neg)
+    assert score.matched == 1
+    assert score.false_positives == 1
+    assert score.false_positive_rate == 0.5  # 1 FP / 2 candidates
+
+
+def test_matched_candidate_is_not_counted_as_false_positive() -> None:
+    # a candidate that matched a GT must never be double-counted as an FP, even if a
+    # negative anchor sits within range tolerance of the GT
+    gt = [_gt(file="a.js", lines="10-20", must_mention=("CRLF",))]
+    cands = [_cand(file="a.js", lines="12-14", title="CRLF header injection")]
+    neg = [{"file": "a.js", "lines": "12-12", "why_benign": "benign-but-near"}]
+    score = score_case(gt, cands, negative_anchors=neg)
+    assert score.matched == 1
+    assert score.false_positives == 0
+
+
+def test_negative_anchor_in_other_file_is_not_a_false_positive() -> None:
+    gt = [_gt(file="a.js", lines="10-20")]
+    cands = [_cand(file="b.js", lines="40-41", title="noise elsewhere")]
+    neg = [{"file": "a.js", "lines": "40-42", "why_benign": "benign in a.js only"}]
+    score = score_case(gt, cands, negative_anchors=neg)
+    assert score.false_positives == 0
+    assert score.false_positive_rate == 0.0

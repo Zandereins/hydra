@@ -13,7 +13,7 @@ from typing import Any, cast
 
 import yaml
 
-from bench.runner.models import GroundTruthFinding
+from bench.runner.models import GroundTruthFinding, NegativeAnchor
 from bench.runner.scoring import CaseScore, score_case
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -63,6 +63,21 @@ def load_ground_truth(case_id: str) -> list[dict[str, Any]]:
     ]
 
 
+def load_negative_anchors(case_id: str) -> list[dict[str, Any]]:
+    """Load + validate benign negative anchors for a case; [] if it ships none.
+
+    Validated via NegativeAnchor (extra='forbid') so a malformed anchor fails loudly at
+    load. A candidate overlapping one is scored as an explicit false positive (Track-3 P2)."""
+    path = CASES_DIR / case_id / "negative_anchors.jsonl"
+    if not path.exists():
+        return []
+    return [
+        NegativeAnchor.model_validate_json(line).model_dump(mode="json")
+        for line in path.read_text().splitlines()
+        if line.strip()
+    ]
+
+
 def load_manifest(case_id: str) -> dict[str, Any]:
     return cast(dict[str, Any], yaml.safe_load((CASES_DIR / case_id / "manifest.yaml").read_text()))
 
@@ -76,7 +91,7 @@ def run_single_case(case_id: str, candidates_path: Path) -> CaseScore:
         for line in candidates_path.read_text().splitlines()
         if line.strip()
     ]
-    return score_case(gt, candidates)
+    return score_case(gt, candidates, negative_anchors=load_negative_anchors(case_id))
 
 
 def write_baseline(
@@ -142,7 +157,12 @@ def _capture_case_run(case_id: str, judge: object) -> tuple[CaseScore | None, li
         try:
             report_path = invoke_hydra(workspace)
             candidates = extract_candidates(report_path)  # prefer .findings.json sidecar
-            score = score_case(load_ground_truth(case_id), candidates, judge=judge)  # type: ignore[arg-type]
+            score = score_case(
+                load_ground_truth(case_id),
+                candidates,
+                judge=judge,  # type: ignore[arg-type]
+                negative_anchors=load_negative_anchors(case_id),
+            )
         except subprocess.TimeoutExpired:
             outcomes.append("timeout")
             continue
