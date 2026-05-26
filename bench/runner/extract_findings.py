@@ -18,16 +18,39 @@ _ACTION_RE = re.compile(
     rf"^###\s+A\d+\s+{_DASH}\s+(?P<sev>[A-Z]+)\s+{_DASH}\s+(?P<loc>.+?)\s+{_DASH}\s+Est:",
     re.MULTILINE,
 )
-# Bug-descriptive lines inside an action block (What/Why) — best for must_mention.
-_FIELD_RE = re.compile(r"\*\*(?:What|Why):\*\*\s*(.+)")
+# Bug-descriptive lines inside an action block (What/Why), multi-line until the next
+# **Field:** / blank line / end — real reports wrap these across several lines.
+_FIELD_RE = re.compile(r"\*\*(?:What|Why):\*\*\s*(.+?)(?=\n\*\*|\n\n|\Z)", re.DOTALL)
+# A line-spec is digits with optional commas/dashes/space ("13", "13-18", "15,21-22").
+_LINESPEC_RE = re.compile(r"^\d[\d,\s-]*$")
+
+
+def _actions_section(markdown: str) -> str:
+    """Slice just the `## Actions` section (heading → next `## ` or EOF).
+
+    Scopes heading parsing so `### A{N}`-shaped lines elsewhere (e.g. advisor prose
+    in `## Full Advisor Responses`) can't be mistaken for action candidates.
+    """
+    head = re.search(r"^##\s+Actions\s*$", markdown, re.MULTILINE)
+    if head is None:
+        return ""
+    rest = markdown[head.end() :]
+    nxt = re.search(r"^##\s+", rest, re.MULTILINE)
+    return rest[: nxt.start()] if nxt else rest
 
 
 def _split_loc(loc: str) -> tuple[str, str]:
-    """Split 'path/to/file.ts:13-18' into (file, lines); lines may be ''."""
+    """Split 'path/to/file.ts:13-18' into (file, lines); lines may be ''.
+
+    Only treats the rsplit tail as a line-spec if it actually looks like one, so a
+    Windows-style or colon-bearing path with no line range isn't mis-split.
+    """
     loc = loc.strip().strip("`")
     if ":" in loc:
         file, lines = loc.rsplit(":", 1)
-        return file.strip(), lines.strip()
+        lines = lines.strip()
+        if _LINESPEC_RE.match(lines):
+            return file.strip(), lines
     return loc, ""
 
 
@@ -37,13 +60,15 @@ def _from_actions_body(markdown: str) -> list[dict[str, Any]]:
     The What/Why text is bug-descriptive (unlike the fix-oriented frontmatter
     summary), so must_mention keyword matching works against it.
     """
+    section = _actions_section(markdown)
     candidates: list[dict[str, Any]] = []
-    matches = list(_ACTION_RE.finditer(markdown))
+    matches = list(_ACTION_RE.finditer(section))
     for i, m in enumerate(matches):
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(markdown)
-        block = markdown[m.end() : end]
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(section)
+        block = section[m.end() : end]
         file, lines = _split_loc(m.group("loc"))
-        text = " ".join(fm.group(1).strip() for fm in _FIELD_RE.finditer(block))
+        # collapse each multi-line What/Why to single-spaced text for keyword matching
+        text = " ".join(" ".join(fm.group(1).split()) for fm in _FIELD_RE.finditer(block))
         candidates.append({
             "title": text or m.group("loc").strip(),
             "file": file,
@@ -61,8 +86,15 @@ def _from_frontmatter(markdown: str) -> list[dict[str, Any]]:
     end = md.find("\n---", 3)
     if end == -1:
         return []
-    frontmatter = yaml.safe_load(md[3:end]) or {}
-    actions = frontmatter.get("top_actions", []) or []
+    try:  # LLM-emitted YAML may be malformed — degrade to no candidates, never crash
+        frontmatter = yaml.safe_load(md[3:end])
+    except yaml.YAMLError:
+        return []
+    if not isinstance(frontmatter, dict):
+        return []
+    actions = frontmatter.get("top_actions", [])
+    if not isinstance(actions, list):
+        return []
     return [
         {
             "title": a.get("summary", ""),
@@ -71,6 +103,7 @@ def _from_frontmatter(markdown: str) -> list[dict[str, Any]]:
             "severity": a.get("severity", "MODERATE"),
         }
         for a in actions
+        if isinstance(a, dict)
     ]
 
 
