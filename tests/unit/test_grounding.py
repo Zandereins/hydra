@@ -62,3 +62,17 @@ def test_extract_salient_tokens_from_title_and_chain():
 def test_count_present_is_case_insensitive():
     assert count_present(["setHeader", "CRLF"], "function setHeader(){ // crlf } ") == 2
     assert count_present(["nonexistent"], "abc") == 0
+
+
+from hydra.grounding import demote
+
+
+def test_demote_drops_one_rung():
+    assert demote(Severity.CATASTROPHIC) == Severity.SERIOUS
+    assert demote(Severity.SERIOUS) == Severity.MODERATE
+    assert demote(Severity.MODERATE) == Severity.MINOR
+    assert demote(Severity.MINOR) == Severity.TRIVIAL
+
+
+def test_demote_floor_is_trivial():
+    assert demote(Severity.TRIVIAL) == Severity.TRIVIAL
