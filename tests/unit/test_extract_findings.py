@@ -110,6 +110,50 @@ def test_leading_integrity_comment_does_not_break_frontmatter_fallback() -> None
     assert cands[0]["file"] == "app.js"
 
 
+def test_action_parsing_scoped_to_actions_section() -> None:
+    # An A{N}-shaped heading OUTSIDE ## Actions (e.g. advisor prose) must NOT be extracted.
+    md = (
+        "## Actions\n\n"
+        "### A1 -- SERIOUS -- real.ts:10 -- Est: S\n"
+        "**What:** the real seeded bug.\n\n"
+        "## Full Advisor Responses\n\n"
+        "### A2 -- CRITICAL -- phantom.ts:99 -- Est: S\n"
+        "**What:** advisor narrative, not an action.\n"
+    )
+    cands = extract_from_report(md)
+    assert [c["file"] for c in cands] == ["real.ts"]  # phantom.ts not picked up
+
+
+def test_split_loc_does_not_missplit_colon_path_without_linespec() -> None:
+    md = (
+        "## Actions\n\n"
+        "### A1 -- SERIOUS -- C:/src/app.ts -- Est: S\n"
+        "**What:** bug with no line range.\n"
+    )
+    cands = extract_from_report(md)
+    assert cands[0]["file"] == "C:/src/app.ts"
+    assert cands[0]["lines"] == ""
+
+
+def test_multiline_what_why_captured_for_keyword_matching() -> None:
+    md = (
+        "## Actions\n\n"
+        "### A1 -- SERIOUS -- a.ts:1 -- Est: S\n"
+        "**What:** the inbound Authorization header is\n"
+        "forwarded to every downstream without validation.\n"
+        "**Why:** confused-deputy risk.\n"
+    )
+    cands = extract_from_report(md)
+    # the keyword on the 2nd physical line must be captured
+    assert "forwarded" in cands[0]["title"]
+    assert "validation" in cands[0]["title"]
+
+
+def test_malformed_frontmatter_yaml_degrades_to_empty_not_crash() -> None:
+    md = "---\ntop_actions: [unclosed\n  bad: : :\n---\nno actions body\n"
+    assert extract_from_report(md) == []  # no crash
+
+
 def test_one_x_candidate_omits_default_issue_class() -> None:
     md = (
         "---\n"
