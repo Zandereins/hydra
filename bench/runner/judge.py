@@ -43,10 +43,12 @@ def make_judge(*, client: object, model: str) -> Judge:
         # forge a premature </candidate_untrusted> close + smuggle instructions.
         safe_cand = repr(cand).replace("</candidate_untrusted>", "")
         prompt = (
-            f"Ground truth: {gt.get('file')}:{gt.get('lines')} — "
-            f"required keywords (any one counts): {gt.get('must_mention')}\n"
+            f"Ground truth: {gt.get('file')}:{gt.get('lines')}\n"
+            f"Description: {gt.get('description', '')}\n"
+            f"Required keywords (any one counts): {gt.get('must_mention')}\n"
             f"<candidate_untrusted>{safe_cand}</candidate_untrusted>\n"
-            "Does the candidate identify the ground-truth issue? One sentence, then verdict."
+            "Does the candidate identify the ground-truth issue (same root cause)? "
+            "One sentence, then verdict."
         )
         try:
             msg = client.messages.parse(  # type: ignore[attr-defined]
