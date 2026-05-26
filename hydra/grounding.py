@@ -99,13 +99,11 @@ _TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 MAX_TOKENS = 8
 
 
-def extract_salient_tokens(finding: AdvisorFinding) -> list[str]:
-    """Up to MAX_TOKENS identifiers / call names from title + chain.premise + conclusion.
-
-    RECONCILE-1: spec §5.1's `chain.code_construct` does not exist; the real
-    free-text code-claim fields are title + premise + conclusion.
-    """
-    source = " ".join([finding.title, finding.chain.premise, finding.chain.conclusion])
+def salient_tokens_from_text(source: str) -> list[str]:
+    """Up to MAX_TOKENS distinct identifier-like tokens from free text (stopwords
+    excluded). Shared by the finding extractor and the bench threshold sweep so the
+    calibrated CITATION_THRESHOLD is computed over the SAME tokenization the live
+    grounder uses."""
     seen: list[str] = []
     for match in _TOKEN_RE.findall(source):
         if match.lower() in _STOPWORDS:
@@ -115,6 +113,17 @@ def extract_salient_tokens(finding: AdvisorFinding) -> list[str]:
         if len(seen) >= MAX_TOKENS:
             break
     return seen
+
+
+def extract_salient_tokens(finding: AdvisorFinding) -> list[str]:
+    """Up to MAX_TOKENS identifiers / call names from title + chain.premise + conclusion.
+
+    RECONCILE-1: spec §5.1's `chain.code_construct` does not exist; the real
+    free-text code-claim fields are title + premise + conclusion.
+    """
+    return salient_tokens_from_text(
+        " ".join([finding.title, finding.chain.premise, finding.chain.conclusion])
+    )
 
 
 def count_present(tokens: list[str], text: str) -> int:
@@ -147,8 +156,11 @@ def demote(severity: Severity) -> Severity:
     return _SEVERITY_LADDER[min(idx + 1, len(_SEVERITY_LADDER) - 1)]
 
 
-CITATION_THRESHOLD = 0.4  # starting point only — NOT yet calibrated (spec §2.3/§8 open item;
-#                           needs a labelled TP/FP sweep once a median-of-N baseline exists)
+CITATION_THRESHOLD = 0.325  # CALIBRATED (Track-3 P5, spec §6): F1-maximizing value of a
+#   TP/FP sweep over bench/grounding_labels.jsonl — separates the highest hallucinated
+#   citation (0.286) from the lowest genuine one (0.375). Re-derived + drift-guarded by
+#   tests/unit/test_threshold_calibration.py (was an uncalibrated 0.4, which over-demoted
+#   genuine citations near the boundary). Re-sweep if the label set changes.
 
 _SAFETY_POSITIONS = frozenset({Position.APPROVE})
 _SAFETY_SEVERITIES = frozenset({Severity.TRIVIAL})
