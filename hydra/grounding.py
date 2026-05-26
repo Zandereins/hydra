@@ -10,7 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from hydra.envelopes import AdvisorFinding, Severity
+from hydra.envelopes import AdvisorFinding, GroundingStatus, Position, Severity
+from hydra.path_safety import PathEscapeError, contained_path
 
 DEFAULT_MAX_LINES = 200  # DoS cap: never read more than this many lines for one citation
 
@@ -104,3 +105,54 @@ def demote(severity: Severity) -> Severity:
     """Drop exactly one rung; TRIVIAL is the floor."""
     idx = _SEVERITY_LADDER.index(severity)
     return _SEVERITY_LADDER[min(idx + 1, len(_SEVERITY_LADDER) - 1)]
+
+
+CITATION_THRESHOLD = 0.4  # calibrated on bench cases during impl (spec §2.3); start here
+
+_SAFETY_POSITIONS = frozenset({Position.APPROVE})
+_SAFETY_SEVERITIES = frozenset({Severity.TRIVIAL})
+
+
+def ground_finding(
+    finding: AdvisorFinding,
+    repo_root: Path | str,
+    *,
+    threshold: float = CITATION_THRESHOLD,
+) -> AdvisorFinding:
+    """Set finding.grounding (and demote severity where required) in place."""
+    if finding.position in _SAFETY_POSITIONS or finding.severity in _SAFETY_SEVERITIES:
+        finding.grounding = GroundingStatus.NOT_APPLICABLE
+        return finding
+
+    if not finding.file or not finding.lines:
+        finding.grounding = GroundingStatus.NO_CITATION
+        finding.severity = demote(finding.severity)
+        return finding
+
+    try:
+        # must_exist=False: run the escape check first so PATH_ESCAPE always takes
+        # precedence over FILE_MISSING, even for paths that both escape and are absent.
+        resolved = contained_path(repo_root, finding.file, must_exist=False)
+    except PathEscapeError:
+        finding.grounding = GroundingStatus.PATH_ESCAPE  # caller drops to degradation panel
+        return finding
+
+    if not resolved.exists():
+        finding.grounding = GroundingStatus.FILE_MISSING
+        finding.severity = demote(finding.severity)
+        return finding
+
+    range_text = read_range(resolved, finding.lines)
+    if range_text is None:
+        finding.grounding = GroundingStatus.RANGE_MISSING
+        finding.severity = demote(finding.severity)
+        return finding
+
+    tokens = extract_salient_tokens(finding)
+    ratio = count_present(tokens, range_text) / max(len(tokens), 1)
+    if ratio >= threshold:
+        finding.grounding = GroundingStatus.CITATION_PRESENT
+    else:
+        finding.grounding = GroundingStatus.TOKEN_MISMATCH
+        finding.severity = demote(finding.severity)
+    return finding
