@@ -52,6 +52,13 @@ def test_gate_fails_on_release_regression_against_multi_run_baseline(tmp_path: P
     assert gate_against_baseline({"c1": 0.0, "c2": 0.0}, bl) == 1
 
 
+def test_gate_returns_2_on_no_scored_runs(tmp_path: Path) -> None:
+    # total harness outage (no scored runs) must NOT be reported as a quality regression
+    bl = tmp_path / "baseline.json"
+    bl.write_text(json.dumps(_multi_run_baseline({"c1": 1.0, "c2": 1.0})))
+    assert gate_against_baseline({}, bl) == 2
+
+
 def test_single_run_baseline_is_advisory_only_never_hard_fails(tmp_path: Path) -> None:
     # A single-run baseline (no/<=1 runs) must NEVER return exit 1, even on a regression.
     bl = tmp_path / "baseline.json"
