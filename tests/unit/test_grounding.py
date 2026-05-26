@@ -50,6 +50,21 @@ def test_read_range_dos_cap(tmp_path: Path) -> None:
     assert out.count("\n") <= 49
 
 
+def test_read_range_caps_pathological_single_line(tmp_path: Path) -> None:
+    f = tmp_path / "min.js"
+    f.write_text("x" * 5_000_000)  # one 5MB line, no newline — bypasses a line-only cap
+    out = read_range(f, "1", max_lines=200, max_line_bytes=4096)
+    assert out is not None
+    assert len(out) <= 4096  # byte cap applied, not the whole 5MB line
+
+
+def test_read_range_trailing_newline_has_no_phantom_line(tmp_path: Path) -> None:
+    f = tmp_path / "x.py"
+    f.write_text("a\nb\n")  # 2 real lines; the trailing \n must not create a phantom line 3
+    assert read_range(f, "2") == "b"
+    assert read_range(f, "3") is None
+
+
 # ---------------------------------------------------------------------------
 # Task 2: salient-token extraction + presence count
 # ---------------------------------------------------------------------------
