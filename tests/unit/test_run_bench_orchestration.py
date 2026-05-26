@@ -1,9 +1,43 @@
+import json
+from pathlib import Path
+
 from bench.runner.run_bench import (
     FAST_BENCH_CASES,
+    _median_f1_by_case,
     discover_cases,
+    gate_against_baseline,
     load_ground_truth,
     plan_runs,
 )
+from bench.runner.scoring import CaseScore
+
+
+def _score(f1: float) -> CaseScore:
+    return CaseScore(
+        recall=f1, precision=f1, f1=f1, critical_recall=f1, matched=1, missed=0, noise=0
+    )
+
+
+def test_median_f1_by_case_takes_median_across_runs() -> None:
+    runs = [
+        {"scores": {"c1": _score(0.4)}},
+        {"scores": {"c1": _score(0.6)}},
+        {"scores": {"c1": _score(0.5)}},
+    ]
+    assert _median_f1_by_case(runs) == {"c1": 0.5}
+
+
+def test_gate_passes_when_no_regression(tmp_path: Path, capsys) -> None:
+    bl = tmp_path / "baseline.json"
+    bl.write_text(json.dumps({"cases": {"c1": {"median_f1": 0.5}, "c2": {"median_f1": 0.5}}}))
+    assert gate_against_baseline({"c1": 0.5, "c2": 0.5}, bl) == 0
+
+
+def test_gate_fails_on_release_regression(tmp_path: Path, capsys) -> None:
+    bl = tmp_path / "baseline.json"
+    bl.write_text(json.dumps({"cases": {"c1": {"median_f1": 0.8}, "c2": {"median_f1": 0.8}}}))
+    # both cases drop >=10pp -> release fail -> exit code 1
+    assert gate_against_baseline({"c1": 0.6, "c2": 0.6}, bl) == 1
 
 
 def test_load_ground_truth_validates_and_carries_keywords():

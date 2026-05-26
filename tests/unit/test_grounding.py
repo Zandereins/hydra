@@ -214,6 +214,45 @@ def test_summarize_counts_and_renders() -> None:
     assert summary.not_applicable == 1
     assert summary.demoted == 1  # TOKEN_MISMATCH
     assert summary.dropped == 1  # PATH_ESCAPE
+    assert summary.demoted_breakdown["TOKEN_MISMATCH"] == 1
     rendered = summary.render()
     assert "## Grounding Summary" in rendered
     assert "CITATION_PRESENT: 1" in rendered
+    assert "Auto-demoted: 1 (1 TOKEN_MISMATCH)" in rendered  # per-status breakdown (spec §2.5)
+
+
+def test_read_range_comma_separated_span(tmp_path: Path) -> None:
+    f = tmp_path / "x.py"
+    f.write_text("\n".join(str(i) for i in range(1, 31)))  # lines "1".."30"
+    # "15,21-22" spans min=15..max=22 -> lines 15..22 (values 15..22)
+    out = read_range(f, "15,21-22")
+    assert out is not None
+    assert out.splitlines()[0] == "15"
+    assert out.splitlines()[-1] == "22"
+
+
+def test_path_escape_beats_file_missing(tmp_path: Path) -> None:
+    # A path that BOTH escapes the repo AND does not exist must report PATH_ESCAPE,
+    # not FILE_MISSING (the whole point of escape-first / must_exist=False).
+    f = _finding(file="../../nonexistent-xyz-12345.js", lines="1-2", severity=Severity.SERIOUS)
+    ground_finding(f, tmp_path)
+    assert f.grounding == GroundingStatus.PATH_ESCAPE
+    assert f.severity == Severity.SERIOUS  # PATH_ESCAPE drops to panel, does NOT demote
+
+
+def test_no_citation_when_only_lines_missing(tmp_path: Path) -> None:
+    f = _finding(file="x.js", lines=None, severity=Severity.SERIOUS)
+    ground_finding(f, tmp_path)
+    assert f.grounding == GroundingStatus.NO_CITATION
+    assert f.severity == Severity.MODERATE  # demoted one rung
+
+
+def test_read_range_multiline_byte_budget(tmp_path: Path) -> None:
+    # When early near-cap lines exhaust the byte budget, later in-range lines drop out
+    # (documented behavior) — but each returned line is still truncated to max_line_bytes.
+    f = tmp_path / "x.py"
+    f.write_text("\n".join("a" * 4000 for _ in range(10)))
+    out = read_range(f, "1-10", max_lines=3, max_line_bytes=4096)
+    assert out is not None
+    for line in out.splitlines():
+        assert len(line) <= 4096

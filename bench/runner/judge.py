@@ -6,31 +6,17 @@ replacing the never-built emit_findings tool-coercion (spec §4.2).
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
 from typing import Literal
 
 from pydantic import BaseModel
 
-from hydra.budget import TokenUsage
+from bench.runner.scoring import Judge
 
 
 class JudgeVerdict(BaseModel):
     verdict: Literal["MATCH", "NO_MATCH"]
     reason: str
 
-
-def usage_to_tokens(usage: object) -> TokenUsage:
-    """Map an anthropic Usage to hydra's TokenUsage (judge makes no cached calls)."""
-    return TokenUsage(
-        input=int(getattr(usage, "input_tokens", 0) or 0),
-        output=int(getattr(usage, "output_tokens", 0) or 0),
-        cache_read=int(getattr(usage, "cache_read_input_tokens", 0) or 0),
-        cache_write_5m=0,
-        cache_write_1h=0,
-    )
-
-
-Judge = Callable[[dict[str, object], dict[str, object]], bool]
 
 _JUDGE_SYSTEM = (
     "You are a blind benchmark judge. You see a ground-truth bug description and a "
@@ -39,7 +25,7 @@ _JUDGE_SYSTEM = (
 )
 
 
-def make_judge(*, client: object, model: str, max_tokens: int = 256) -> Judge:
+def make_judge(*, client: object, model: str) -> Judge:
     """Build a judge callable over an anthropic-like client (messages.parse)."""
 
     def _judge(gt: dict[str, object], cand: dict[str, object]) -> bool:
@@ -51,7 +37,7 @@ def make_judge(*, client: object, model: str, max_tokens: int = 256) -> Judge:
         )
         msg = client.messages.parse(  # type: ignore[attr-defined]
             model=model,
-            max_tokens=max_tokens,
+            max_tokens=256,
             temperature=0,
             system=_JUDGE_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
