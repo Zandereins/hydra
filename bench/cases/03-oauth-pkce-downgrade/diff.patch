@@ -1,9 +1,8 @@
+diff --git a/src/auth/oauth-callback.ts b/src/auth/oauth-callback.ts
+index 05be387..282b5bf 100644
 --- a/src/auth/oauth-callback.ts
 +++ b/src/auth/oauth-callback.ts
-@@ -18,19 +18,16 @@ export function buildAuthorizationUrl(state: string, codeVerifier: string): str
-   const params = new URLSearchParams({
-     response_type: "code",
-     client_id: config.clientId,
+@@ -21,16 +21,13 @@ export function buildAuthorizationUrl(state: string, codeVerifier: string): stri
      redirect_uri: config.redirectUri,
      state,
      code_challenge: codeChallenge,
@@ -12,7 +11,7 @@
    });
    return `${config.authorizationEndpoint}?${params}`;
  }
-
+ 
  export async function handleCallback(code: string, receivedVerifier: string): Promise<TokenResponse> {
 -  const expected = base64url(sha256(receivedVerifier));
 -  if (!timingSafeEqual(Buffer.from(expected), Buffer.from(storedChallenge))) {

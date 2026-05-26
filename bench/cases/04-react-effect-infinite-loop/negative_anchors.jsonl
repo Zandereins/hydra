@@ -1,0 +1,1 @@
+{"file":"src/components/ProductList.tsx","lines":"1","why_benign":"the default React import is required by the project's classic JSX runtime; flagging it as an unused import would be a false positive."}

@@ -1,0 +1,54 @@
+diff --git a/src/cache/request-counter.ts b/src/cache/request-counter.ts
+index 6648566..a59f986 100644
+--- a/src/cache/request-counter.ts
++++ b/src/cache/request-counter.ts
+@@ -52,15 +52,25 @@ export function getCount(ip: string): number {
+   return entry.count;
+ }
+ 
++/**
++ * Persist a rate-limit event to the audit log asynchronously.
++ * Fire-and-forget by design; callers should not block on this.
++ */
++async function persistAuditEvent(ip: string, count: number): Promise<void> {
++  // Simulated async write to an external audit store (e.g. Redis, DB).
++  await new Promise<void>((resolve) => setImmediate(resolve));
++  // In production this would be: await auditDb.insert({ ip, count, ts: now() });
++}
++
+ /**
+  * Increment the request counter for an IP and check the limit.
+  * Returns true when the request is allowed; false when the IP is
+  * over the limit.
+  *
+- * All mutations happen synchronously — no await, so two concurrent
+- * calls cannot interleave between the read and the write.
++ * CHANGED: now async so we can await the audit log write between
++ * reading the current count and updating it.
+  */
+-export function incrementAndCheck(ip: string): boolean {
++export async function incrementAndCheck(ip: string): Promise<boolean> {
+   evictExpired();
+ 
+   const t = now();
+@@ -69,6 +79,7 @@ export function incrementAndCheck(ip: string): boolean {
+   if (!entry || entry.resetAt <= t) {
+     // Fresh bucket for this IP.
+     store.set(ip, { count: 1, resetAt: t + WINDOW_MS });
++    await persistAuditEvent(ip, 1);
+     return true;
+   }
+ 
+@@ -76,6 +87,12 @@ export function incrementAndCheck(ip: string): boolean {
+     return false; // limit already hit
+   }
+ 
++  // BUG: await here yields to the event loop. A second concurrent request
++  // for the same IP reads the same entry.count before either write lands,
++  // so both see count < MAX_REQUESTS and both increment — allowing up to
++  // 2× MAX_REQUESTS requests through before the limit engages.
++  await persistAuditEvent(ip, entry.count + 1);
++
+   entry.count += 1;
+   return true;
+ }

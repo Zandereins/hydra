@@ -1,0 +1,1 @@
+{"file":"src/auth/oauth-callback.ts","lines":"36-38","why_benign":"cacheKey is a non-cryptographic rolling hash used only as an in-memory Map key, never for security, signing, or integrity — flagging it as a weak-hash vulnerability is a false positive."}

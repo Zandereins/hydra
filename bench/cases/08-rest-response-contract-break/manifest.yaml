@@ -1,0 +1,16 @@
+id: 08-rest-response-contract-break
+category: api
+severity_target: SERIOUS
+source:
+  origin: hand-crafted
+  inspired_by: "Express REST API field rename + response shape change without versioning"
+submodule:
+  path: bench/repos/express-sample
+  sha: "PLACEHOLDER_UNTIL_TASK_35"
+description: |
+  A PR refactors an Express user route handler, renaming the response field
+  userId (number) to id (string), dropping the email field, and wrapping the
+  list endpoint's array response in a {data:[]} envelope — all without API
+  versioning. As a bonus defect it leaks passwordHash into the GET /:id response.
+expected_issue_class: api_break
+expected_severity: SERIOUS

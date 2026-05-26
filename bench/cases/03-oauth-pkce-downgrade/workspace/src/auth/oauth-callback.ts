@@ -34,3 +34,8 @@ export async function handleCallback(code: string, receivedVerifier: string): Pr
   const tokens = await exchangeCode(code, receivedVerifier);
   return tokens;
 }
+
+// Local cache key — non-crypto hash used only as an in-memory Map key.
+function cacheKey(state: string): string {
+  return state.split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0).toString(16);
+}

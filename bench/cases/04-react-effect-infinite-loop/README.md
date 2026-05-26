@@ -7,6 +7,6 @@ appears changed. Each effect run calls `setProducts`, which triggers a
 re-render, which creates a new `filters` object, which triggers the effect
 again — an infinite render loop that freezes the browser tab.
 
-**Ground truth:** 1 SERIOUS finding (`logic_error`).
+**Ground truth:** 2 findings — 1 mandatory SERIOUS (`logic_error`, infinite render loop) + 1 optional MINOR (`logic_error`, unhandled fetch rejection / no cleanup). Plus a benign distractor (required default `React` import).
 **Category:** bug.
 **Expected position:** REJECT.
