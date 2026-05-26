@@ -91,9 +91,17 @@ def prepare_case_workspace(case_id: str) -> Path:
 
 
 def invoke_hydra(workspace: Path) -> Path:
-    """Run Claude Code headless with /hydra this in the workspace dir."""
+    """Run Claude Code headless with /hydra this in the workspace dir.
+
+    `--settings '{"disableAllHooks": true}'` makes the run hermetic and
+    reproducible: the operator's user-level hooks (e.g. a Stop hook that returns
+    `{"decision":"block"}`) otherwise interrupt the headless session before the
+    report is written → intermittent "no report produced". Hooks are disabled ONLY
+    for this subprocess; CLAUDE.md/skills/plugins still load (unlike `--bare`), so
+    we benchmark the real product. The operator's interactive sessions are untouched.
+    """
     subprocess.run(
-        ["claude", "--print", "/hydra this"],
+        ["claude", "--print", "--settings", '{"disableAllHooks": true}', "/hydra this"],
         cwd=str(workspace),
         check=True,
         capture_output=True,
