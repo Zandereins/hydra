@@ -8,6 +8,7 @@ title + chain.premise + chain.conclusion.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from hydra.envelopes import AdvisorFinding, GroundingStatus, Position, Severity
@@ -156,3 +157,45 @@ def ground_finding(
         finding.grounding = GroundingStatus.TOKEN_MISMATCH
         finding.severity = demote(finding.severity)
     return finding
+
+
+_DEMOTED_STATUSES = frozenset({
+    GroundingStatus.NO_CITATION,
+    GroundingStatus.FILE_MISSING,
+    GroundingStatus.RANGE_MISSING,
+    GroundingStatus.TOKEN_MISMATCH,
+})
+
+
+@dataclass(frozen=True)
+class GroundingSummary:
+    total: int
+    citation_present: int
+    not_applicable: int
+    demoted: int
+    dropped: int
+
+    def render(self) -> str:
+        pct = (100.0 * self.citation_present / self.total) if self.total else 0.0
+        return (
+            "## Grounding Summary\n"
+            f"- Findings total: {self.total}\n"
+            f"- CITATION_PRESENT: {self.citation_present} ({pct:.1f}%)\n"
+            f"- NOT_APPLICABLE (safety claim): {self.not_applicable}\n"
+            f"- Auto-demoted: {self.demoted}\n"
+            f"- Dropped (PATH_ESCAPE): {self.dropped}"
+        )
+
+
+def summarize(findings: list[AdvisorFinding]) -> GroundingSummary:
+    return GroundingSummary(
+        total=len(findings),
+        citation_present=sum(
+            1 for f in findings if f.grounding == GroundingStatus.CITATION_PRESENT
+        ),
+        not_applicable=sum(
+            1 for f in findings if f.grounding == GroundingStatus.NOT_APPLICABLE
+        ),
+        demoted=sum(1 for f in findings if f.grounding in _DEMOTED_STATUSES),
+        dropped=sum(1 for f in findings if f.grounding == GroundingStatus.PATH_ESCAPE),
+    )
