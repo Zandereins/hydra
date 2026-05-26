@@ -184,6 +184,12 @@ def gate_against_baseline(
     """
     from bench.runner.report import check_regression, render
 
+    if not current_critical_recall:
+        # zero scored runs = total harness outage, NOT a quality regression — exit 2 so
+        # CI can distinguish infrastructure failure from a real regression (exit 1).
+        print("[ERROR] no scored runs — harness failure, not a quality regression")
+        return 2
+
     baseline = json.loads(baseline_path.read_text())
     single_run = all(len(c.get("runs", [])) <= 1 for c in baseline.get("cases", {}).values())
     result = check_regression(baseline, current_critical_recall, current_f1=current_f1)

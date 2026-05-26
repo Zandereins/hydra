@@ -15,8 +15,9 @@ from bench.runner.scoring import Judge
 
 
 class JudgeVerdict(BaseModel):
-    # reason BEFORE verdict: structured output emits fields in declaration order, so the
-    # model reasons before committing to the categorical answer (reason-then-answer).
+    # reason BEFORE verdict: schema field order *biases* (does not hard-guarantee)
+    # generation toward reason-then-answer; the prompt also explicitly asks for one
+    # sentence then the verdict, reinforcing it at the prompt level.
     reason: str
     verdict: Literal["MATCH", "NO_MATCH"]
 
@@ -38,10 +39,13 @@ def make_judge(*, client: object, model: str) -> Judge:
     error never aborts a whole bench run (spec §3.3/§4.4 graceful degradation)."""
 
     def _judge(gt: dict[str, object], cand: dict[str, object]) -> bool:
+        # strip any literal fence tag the candidate text might contain so it can't
+        # forge a premature </candidate_untrusted> close + smuggle instructions.
+        safe_cand = repr(cand).replace("</candidate_untrusted>", "")
         prompt = (
             f"Ground truth: {gt.get('file')}:{gt.get('lines')} — "
             f"required keywords (any one counts): {gt.get('must_mention')}\n"
-            f"<candidate_untrusted>{cand!r}</candidate_untrusted>\n"
+            f"<candidate_untrusted>{safe_cand}</candidate_untrusted>\n"
             "Does the candidate identify the ground-truth issue? One sentence, then verdict."
         )
         try:
