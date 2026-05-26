@@ -7,7 +7,10 @@ title + chain.premise + chain.conclusion.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+from hydra.envelopes import AdvisorFinding
 
 DEFAULT_MAX_LINES = 200  # DoS cap: never read more than this many lines for one citation
 
@@ -50,3 +53,36 @@ def read_range(path: Path, lines: str, *, max_lines: int = DEFAULT_MAX_LINES) ->
                 break
             selected.append(line.rstrip("\n"))
     return "\n".join(selected) if selected else None
+
+
+_STOPWORDS = frozenset({
+    "the", "and", "for", "with", "into", "from", "this", "that", "when",
+    "where", "value", "values", "code", "function", "method", "via", "use",
+    "used", "uses", "can", "could", "will", "would", "should", "enables",
+})
+_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+MAX_TOKENS = 8
+
+
+def extract_salient_tokens(finding: AdvisorFinding, *, max_tokens: int = MAX_TOKENS) -> list[str]:
+    """Identifiers / call names from title + chain.premise + chain.conclusion.
+
+    RECONCILE-1: spec §5.1's `chain.code_construct` does not exist; the real
+    free-text code-claim fields are title + premise + conclusion.
+    """
+    source = " ".join([finding.title, finding.chain.premise, finding.chain.conclusion])
+    seen: list[str] = []
+    for match in _TOKEN_RE.findall(source):
+        if match.lower() in _STOPWORDS:
+            continue
+        if match not in seen:
+            seen.append(match)
+        if len(seen) >= max_tokens:
+            break
+    return seen
+
+
+def count_present(tokens: list[str], text: str) -> int:
+    """How many tokens appear (case-insensitive substring) in text."""
+    lowered = text.lower()
+    return sum(1 for t in tokens if t.lower() in lowered)
