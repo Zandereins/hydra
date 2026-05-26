@@ -14,6 +14,10 @@ class CaseScore:
     matched: int
     missed: int
     noise: int
+    # Distractor-resistance (Track-3 P2): candidates that overlap a benign negative
+    # anchor. Defaults keep back-compat for callers/baselines built before P2.
+    false_positives: int = 0
+    false_positive_rate: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -94,13 +98,31 @@ def _is_match(
     return False
 
 
+def _overlaps_any_negative(
+    cand: dict[str, object], negative_anchors: list[dict[str, object]]
+) -> bool:
+    """True if the candidate overlaps any benign negative anchor (file + range)."""
+    cand_file = cand.get("file")
+    cand_lines = str(cand.get("lines", ""))
+    return any(
+        na.get("file") == cand_file and _ranges_overlap(str(na.get("lines", "")), cand_lines)
+        for na in negative_anchors
+    )
+
+
 def score_case(
     ground_truth: list[dict[str, object]],
     candidates: list[dict[str, object]],
     *,
     judge: Judge | None = None,
+    negative_anchors: list[dict[str, object]] | None = None,
 ) -> CaseScore:
-    """Greedy one-to-one matching: file + range-overlap(±5) + (keyword OR judge)."""
+    """Greedy one-to-one matching: file + range-overlap(±5) + (keyword OR judge).
+
+    ``negative_anchors`` (benign distractor locations) drive ``false_positive_rate``:
+    a candidate that matched no GT but overlaps a negative anchor is an explicit false
+    positive. Matched candidates are never counted as FPs.
+    """
     used: set[int] = set()
     matches: list[FindingMatch] = []
     for gi, gt in enumerate(ground_truth):
@@ -121,6 +143,15 @@ def score_case(
     precision = matched / max(len(candidates), 1)
     f1 = 2 * recall * precision / max(recall + precision, 1e-9)
     critical_recall = matched_mandatory / max(len(mandatory), 1)
+
+    neg = negative_anchors or []
+    false_positives = sum(
+        1
+        for ci, cand in enumerate(candidates)
+        if ci not in used and _overlaps_any_negative(cand, neg)
+    )
+    false_positive_rate = false_positives / max(len(candidates), 1)
+
     return CaseScore(
         recall=recall,
         precision=precision,
@@ -129,4 +160,6 @@ def score_case(
         matched=matched,
         missed=len(ground_truth) - matched,
         noise=len(candidates) - matched,
+        false_positives=false_positives,
+        false_positive_rate=false_positive_rate,
     )
