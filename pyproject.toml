@@ -22,10 +22,11 @@ dev = [
   "mypy>=1.11.0",
   "ruff>=0.6.0",
 ]
-# Judge (bench-only) — direct SDK structured-output call. Pinned: messages.parse
-# + output_format + Usage token fields are a hard contract (test_anthropic_contract).
+# Judge (bench-only) — direct SDK structured-output call. The contract test
+# (test_anthropic_contract) guards the messages.parse + output_format + parsed_output
+# surface, so patch/minor fixes can flow; <1.0 guards against the next major.
 judge = [
-  "anthropic>=0.96,<0.97",
+  "anthropic>=0.96,<1.0",
 ]
 bench = [
   "gitpython>=3.1.43",
