@@ -171,6 +171,18 @@ def metric_cis(scores: list[CaseScore], *, seed: int = 0) -> dict[str, MetricCI]
     return cis
 
 
+def load_baseline_cases(path: Path) -> dict[str, Any]:
+    """Return the ``cases`` dict of an existing statistical baseline, or {} if it is absent
+    or unreadable. Used to RESUME a capture that was interrupted (crash / rate limit / kill):
+    already-captured cases are carried forward and skipped on the next run."""
+    if not path.exists():
+        return {}
+    try:
+        return cast(dict[str, Any], json.loads(path.read_text()).get("cases", {}))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
 def write_ci_baseline(
     label: str,
     commit_sha: str,
@@ -179,13 +191,17 @@ def write_ci_baseline(
     *,
     confidence: float = 0.95,
     n_resamples: int = 2000,
+    prior_cases: dict[str, Any] | None = None,
 ) -> None:
     """Write a statistical baseline: per case, median + bootstrap CI per metric over N
     scored runs, plus first-class harness success-rate + failure-mode breakdown.
 
     ``per_case[case]`` carries ``{"scores": list[CaseScore], "outcomes": list[str]}``
-    (outcomes = every attempt incl. failures, so success-rate is honest)."""
-    cases: dict[str, Any] = {}
+    (outcomes = every attempt incl. failures, so success-rate is honest). ``prior_cases``
+    (already-computed case entries from an earlier capture window) are merged in first so an
+    incremental / resumed run preserves them; a freshly recaptured case overrides its prior
+    entry."""
+    cases: dict[str, Any] = dict(prior_cases or {})
     for case_id, data in per_case.items():
         scores: list[CaseScore] = data["scores"]
         outcomes: list[str] = data["outcomes"]
@@ -382,10 +398,23 @@ def _run_mode(
 
     judge = resolve_judge(client=client, model=judge_model)
 
+    # Capture mode persists incrementally + resumes (crash / rate-limit / kill safety): the
+    # baseline file is rewritten after EACH case, and a case already complete in a prior file
+    # is skipped. A multi-hour run thus never loses more than the in-flight case and can be
+    # re-launched to fill the rest after the plan's rate-limit window resets.
+    capturing = check_baseline is None
+    ts = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+    out = baseline_out or (BASELINES_DIR / f"run-{mode}-{ts}.json")
+    prior_cases = load_baseline_cases(out) if capturing else {}
+
     run_records: list[dict[str, Any]] = []  # legacy point-baseline (advisory gate compat)
     per_case: dict[str, dict[str, Any]] = {}  # capture-all: scored runs + every outcome
     telemetry: list[dict[str, Any]] = []
     for spec in plan_runs(mode=mode):
+        prior = prior_cases.get(spec.case_id)
+        if capturing and prior is not None and prior.get("n_scored", 0) >= spec.runs:
+            print(f"[resume] skip {spec.case_id} ({prior['n_scored']}/{spec.runs} scored, done)")
+            continue
         for _ in range(spec.runs):
             score, outcomes = _capture_case_run(spec.case_id, judge)
             slot = per_case.setdefault(spec.case_id, {"scores": [], "outcomes": []})
@@ -397,6 +426,11 @@ def _run_mode(
             if score is not None:
                 slot["scores"].append(score)
                 run_records.append({"scores": {spec.case_id: score}})
+        if capturing:  # persist after each case so an interrupt can't discard prior cases
+            write_ci_baseline(
+                label=mode, commit_sha="HEAD", per_case=per_case,
+                output_path=out, prior_cases=prior_cases,
+            )
     _print_telemetry(telemetry, per_case)
 
     if check_baseline is not None:
@@ -413,9 +447,12 @@ def _run_mode(
             current_f1=_median_metric_by_case(run_records, "f1"),
         )
 
-    ts = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
-    out = baseline_out or (BASELINES_DIR / f"run-{mode}-{ts}.json")
-    write_ci_baseline(label=mode, commit_sha="HEAD", per_case=per_case, output_path=out)
+    # Final merge-write (idempotent with the per-case incremental writes; also covers the
+    # all-cases-already-complete resume, where the loop captured nothing new).
+    write_ci_baseline(
+        label=mode, commit_sha="HEAD", per_case=per_case,
+        output_path=out, prior_cases=prior_cases,
+    )
     print(f"statistical baseline -> {out}")
     return 0
 
