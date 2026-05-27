@@ -44,7 +44,20 @@ def test_aggregate_outcomes_all_scored_has_no_failures() -> None:
 def test_metric_cis_covers_all_gate_metrics() -> None:
     cis = metric_cis([_score(1.0), _score(1.0), _score(1.0)])
     assert set(cis) == {"critical_recall", "recall", "f1", "false_positive_rate"}
-    assert cis["critical_recall"] == MetricCI(1.0, 1.0, 1.0)
+
+
+def test_metric_cis_uses_wilson_for_binary_critical_recall() -> None:
+    # critical_recall is the gated, binary metric (1 mandatory finding/case): it must use
+    # the Wilson proportion CI, not bootstrap-of-median. 3/3 caught -> point 1.0 but the
+    # honest lower bound is < 1.0 (small N), so the gate is not blind (roadmap 0.1).
+    cr = metric_cis([_score(1.0), _score(1.0), _score(1.0)])["critical_recall"]
+    assert cr.median == 1.0
+    assert cr.ci_high == 1.0
+    assert cr.ci_low < 1.0
+    # a flaky miss (2/3) stays a proper proportion CI, never the degenerate [0, 1]
+    cr2 = metric_cis([_score(1.0), _score(0.0), _score(1.0)])["critical_recall"]
+    assert cr2.median == 2 / 3
+    assert cr2.ci_low > 0.0
 
 
 # --- write_ci_baseline ----------------------------------------------------
