@@ -8,6 +8,12 @@ from bench.runner.extract_findings import (
 )
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "sample-hydra.findings.json"
+# A REAL sidecar captured live in the P6 pilot — its issue_class values are free-text
+# ("credential smuggling", "dead code", ...), not the strict IssueClass enum. The first
+# extractor rejected every such finding; this fixture guards against that regression.
+REAL_FIXTURE = (
+    Path(__file__).resolve().parents[1] / "fixtures" / "sample-hydra-real-freetext.findings.json"
+)
 
 
 def test_sidecar_fixture_yields_candidates() -> None:
@@ -27,20 +33,29 @@ def test_sidecar_malformed_json_returns_empty_not_crash() -> None:
     assert extract_from_sidecar("{not json") == []
 
 
-def test_sidecar_skips_invalid_findings() -> None:
-    # extra-key (extra='forbid') and missing required fields are skipped, not crash
+def test_sidecar_real_freetext_issue_class_is_extracted() -> None:
+    # P6-pilot regression: the live skill emits free-text issue_class — all findings must
+    # still be extracted (the strict AdvisorFinding validation used to drop every one).
+    cands = extract_from_sidecar(REAL_FIXTURE.read_text())
+    assert len(cands) == 6
+    assert cands[0]["file"] == "src/interceptors/auth.ts"
+    assert "smuggling" in cands[0]["title"].lower()
+    assert cands[0]["issue_class"] == "credential smuggling"  # free-text preserved verbatim
+
+
+def test_sidecar_skips_only_anchorless_findings() -> None:
+    # lenient contract: a finding is dropped ONLY when it lacks a file+lines anchor
+    # (unusable for scoring); extra keys / free-text fields are tolerated, not rejected.
     text = (
         '{"schema_version": "1.0", "findings": ['
-        '{"id":"A1","title":"t","severity":"SERIOUS","evidence":"VERIFIED","position":"CONCERN",'
-        '"file":"a.ts","lines":"1","issue_class":"other",'
-        '"chain":{"premise":"","execution_trace":"","conclusion":""},"BOGUS":1},'
-        '{"id":"A2","title":"valid","severity":"MODERATE","evidence":"VERIFIED","position":"CONCERN",'
-        '"file":"b.ts","lines":"2","issue_class":"other",'
-        '"chain":{"premise":"","execution_trace":"","conclusion":""}}'
+        '{"id":"A1","title":"no anchor","severity":"SERIOUS","issue_class":"whatever"},'
+        '{"id":"A2","title":"valid","severity":"MODERATE","file":"b.ts","lines":"2",'
+        '"issue_class":"free text class","BONUS_FIELD":1}'
         "]}"
     )
     cands = extract_from_sidecar(text)
-    assert [c["file"] for c in cands] == ["b.ts"]  # the BOGUS-key finding dropped
+    assert [c["file"] for c in cands] == ["b.ts"]  # anchorless A1 dropped, A2 (extra key) kept
+    assert cands[0]["issue_class"] == "free text class"
 
 
 def test_extract_candidates_prefers_sidecar_over_prose(tmp_path: Path) -> None:

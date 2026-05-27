@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import ValidationError
 
 from hydra.envelopes import AdvisorFinding
 
@@ -142,13 +141,41 @@ def extract_from_structured(jsonl: str) -> list[dict[str, Any]]:
     return candidates
 
 
+def _candidate_from_sidecar_finding(raw: object) -> dict[str, Any] | None:
+    """Lenient projection of a SKILL-emitted sidecar finding to a scorer candidate.
+
+    The sidecar is hydra's OWN output (not attacker input), and the live skill emits
+    human-readable `issue_class`/`evidence` values (e.g. "credential smuggling"), NOT the
+    strict internal `IssueClass`/evidence enums. Validating each finding through
+    `AdvisorFinding` therefore dropped every real finding (verified live in the P6 pilot).
+    We instead pull only the fields scoring needs — the file+lines anchor, title, severity
+    — as plain strings and tolerate everything else. A finding without a file+lines anchor
+    is unusable for scoring and skipped. (The grounding-CLI JSONL path,
+    `extract_from_structured`, stays strict — that output IS our own enum-typed emit.)
+    """
+    if not isinstance(raw, dict):
+        return None
+    file = raw.get("file")
+    lines = raw.get("lines")
+    if not file or not lines:
+        return None
+    return {
+        "title": str(raw.get("title", "")),
+        "file": str(file),
+        "lines": str(lines),
+        "severity": str(raw.get("severity", "MODERATE")),
+        "issue_class": str(raw.get("issue_class", "other")),
+    }
+
+
 def extract_from_sidecar(text: str) -> list[dict[str, Any]]:
-    """Candidates from a `.findings.json` sidecar: {schema_version, findings:[AdvisorFinding...]}.
+    """Candidates from a `.findings.json` sidecar: {schema_version, findings:[...]}.
 
     The structured, format-stable contract (Track-3 Component A) — preferred over scraping
-    the prose report. Schema-version gated; each finding validated via AdvisorFinding
-    (extra='forbid'). Malformed JSON / version mismatch / bad findings -> [] (caller falls
-    back to the prose report) — never crashes.
+    the prose report. Schema-version gated; each finding leniently projected to a candidate
+    (tolerating the skill's free-text issue_class/evidence). Malformed JSON / version
+    mismatch / anchorless findings -> dropped; an empty result lets the caller fall back to
+    the prose report. Never crashes.
     """
     try:
         obj = json.loads(text)
@@ -159,13 +186,12 @@ def extract_from_sidecar(text: str) -> list[dict[str, Any]]:
     findings = obj.get("findings")
     if not isinstance(findings, list):
         return []
-    candidates: list[dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for raw in findings:
-        try:
-            candidates.append(_candidate_from_finding(AdvisorFinding.model_validate(raw)))
-        except ValidationError:
-            continue
-    return candidates
+        cand = _candidate_from_sidecar_finding(raw)
+        if cand is not None:
+            out.append(cand)
+    return out
 
 
 def sidecar_path_for(report_path: Path) -> Path:
