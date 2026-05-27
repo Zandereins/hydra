@@ -44,6 +44,30 @@ def test_invoke_hydra_disables_hooks_for_reproducibility(tmp_path: Path) -> None
     assert '{"disableAllHooks": true}' in argv
 
 
+def test_invoke_hydra_strips_api_key_to_stay_subscription_billed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR D-3.2: the bench must stay subscription-billed. Claude Code gives a present
+    ANTHROPIC_API_KEY precedence over the subscription, so a key in the env would silently
+    flip the (Opus-heavy) /hydra runs to per-token API billing. invoke_hydra must strip the
+    key (and ANTHROPIC_AUTH_TOKEN) from the subprocess env while preserving the rest."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-must-not-leak")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "tok-must-not-leak")
+    fake_report = tmp_path / ".hydra" / "reports" / "hydra-20260417-120000.md"
+    fake_report.parent.mkdir(parents=True)
+    fake_report.write_text("# report")
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        invoke_hydra(tmp_path)
+
+    env = mock_run.call_args.kwargs.get("env")
+    assert env is not None, "invoke_hydra must pass an explicit env to control billing"
+    assert "ANTHROPIC_API_KEY" not in env
+    assert "ANTHROPIC_AUTH_TOKEN" not in env
+    assert "PATH" in env  # the rest of the environment is preserved
+
+
 def test_invoke_hydra_uses_cwd_kwarg(tmp_path: Path) -> None:
     """subprocess.run must receive cwd= so the child process runs in the workspace."""
     fake_report = tmp_path / ".hydra" / "reports" / "hydra-20260417-120000.md"

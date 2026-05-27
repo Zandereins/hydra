@@ -105,6 +105,14 @@ def invoke_hydra(workspace: Path) -> Path:
     for this subprocess; CLAUDE.md/skills/plugins still load (unlike `--bare`), so
     we benchmark the real product. The operator's interactive sessions are untouched.
     """
+    # Stay subscription-billed (ADR D-3.2). Claude Code gives a present ANTHROPIC_API_KEY
+    # (and ANTHROPIC_AUTH_TOKEN) precedence over the logged-in subscription, which would
+    # silently flip these Opus-heavy /hydra runs to per-token API billing. Strip both from
+    # the subprocess env (keep everything else) so the bench always bills to the plan.
+    sub_env = {
+        k: v for k, v in os.environ.items()
+        if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+    }
     subprocess.run(
         ["claude", "--print", "--settings", '{"disableAllHooks": true}', "/hydra this"],
         cwd=str(workspace),
@@ -112,6 +120,7 @@ def invoke_hydra(workspace: Path) -> Path:
         capture_output=True,
         text=True,
         timeout=HYDRA_TIMEOUT_S,
+        env=sub_env,
     )
     reports = sorted((workspace / ".hydra" / "reports").glob("hydra-*.md"))
     if not reports:
