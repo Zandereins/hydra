@@ -13,6 +13,7 @@ import bench.runner.run_bench as run_bench
 from bench.runner.run_bench import (
     aggregate_outcomes,
     gate_against_ci_baseline,
+    load_baseline_cases,
     metric_cis,
     write_ci_baseline,
 )
@@ -271,3 +272,91 @@ def test_capture_returns_none_when_every_invocation_errors(
     score, outcomes = run_bench._capture_case_run("c", judge=None)
     assert score is None
     assert outcomes == ["invoke_error"] * run_bench.MAX_ATTEMPTS
+
+
+# --- incremental persistence + resume (crash/rate-limit safety) ------------
+
+
+def test_load_baseline_cases_missing_returns_empty(tmp_path: Path) -> None:
+    assert load_baseline_cases(tmp_path / "nope.json") == {}
+
+
+def test_load_baseline_cases_reads_cases(tmp_path: Path) -> None:
+    out = tmp_path / "bl.json"
+    write_ci_baseline("l", "sha", {"01": {"scores": [_score(1.0)], "outcomes": ["scored"]}}, out)
+    cases = load_baseline_cases(out)
+    assert set(cases) == {"01"}
+    assert cases["01"]["n_scored"] == 1
+
+
+def test_write_ci_baseline_merges_prior_cases(tmp_path: Path) -> None:
+    out = tmp_path / "bl.json"
+    prior = {"01-done": {"n_attempts": 5, "n_scored": 5, "success_rate": 1.0,
+                         "failure_modes": {}, "metrics": {}}}
+    write_ci_baseline(
+        "l", "sha", {"02-new": {"scores": [_score(1.0)], "outcomes": ["scored"]}}, out,
+        prior_cases=prior,
+    )
+    cases = json.loads(out.read_text())["cases"]
+    assert set(cases) == {"01-done", "02-new"}  # prior kept + new added
+
+
+def test_write_ci_baseline_new_overrides_prior_partial(tmp_path: Path) -> None:
+    out = tmp_path / "bl.json"
+    prior = {"01": {"n_scored": 2}}  # a partial prior entry
+    write_ci_baseline(
+        "l", "sha",
+        {"01": {"scores": [_score(1.0)] * 5, "outcomes": ["scored"] * 5}}, out,
+        prior_cases=prior,
+    )
+    cases = json.loads(out.read_text())["cases"]
+    assert cases["01"]["n_scored"] == 5  # recaptured fresh entry wins over prior partial
+
+
+def test_run_mode_persists_each_case_so_a_crash_keeps_prior_cases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Incremental persistence: caseA is written to disk BEFORE caseB is attempted, so a crash
+    # (or rate-limit/kill) during caseB never loses caseA — the run is resumable.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("JUDGE_ENABLED", "0")
+    monkeypatch.setattr(run_bench, "plan_runs", lambda *, mode: [
+        run_bench.RunSpec("caseA", "standard", 1),
+        run_bench.RunSpec("caseB", "standard", 1),
+    ])
+
+    def fake_capture(case_id: str, judge: object) -> tuple[CaseScore | None, list[str]]:
+        if case_id == "caseB":
+            raise RuntimeError("simulated crash mid-capture")
+        return _score(1.0), ["scored"]
+
+    monkeypatch.setattr(run_bench, "_capture_case_run", fake_capture)
+    out = tmp_path / "bl.json"
+    with pytest.raises(RuntimeError):
+        run_bench._run_mode("calibrate", baseline_out=out)
+    cases = json.loads(out.read_text())["cases"]
+    assert "caseA" in cases  # persisted before the caseB crash -> no data loss
+
+
+def test_run_mode_resume_skips_already_complete_cases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("JUDGE_ENABLED", "0")
+    monkeypatch.setattr(run_bench, "plan_runs", lambda *, mode: [
+        run_bench.RunSpec("caseA", "standard", 1),
+        run_bench.RunSpec("caseB", "standard", 1),
+    ])
+    captured: list[str] = []
+
+    def fake_capture(case_id: str, judge: object) -> tuple[CaseScore | None, list[str]]:
+        captured.append(case_id)
+        return _score(1.0), ["scored"]
+
+    monkeypatch.setattr(run_bench, "_capture_case_run", fake_capture)
+    out = tmp_path / "bl.json"
+    run_bench._run_mode("calibrate", baseline_out=out)  # first pass: both captured
+    assert captured == ["caseA", "caseB"]
+    captured.clear()
+    run_bench._run_mode("calibrate", baseline_out=out)  # resume: both complete -> skipped
+    assert captured == []
