@@ -54,3 +54,59 @@ def test_make_judge_no_match() -> None:
 def test_judge_disabled_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JUDGE_ENABLED", "0")
     assert resolve_judge(client=_FakeClient("MATCH"), model="m") is None
+
+
+# --- transient-error retry (P4 follow-up: the one gold-set miss was an API 529) ---
+
+_GT: dict[str, object] = {"file": "a", "lines": "1", "must_mention": ["x"], "description": "d"}
+_CAND: dict[str, object] = {"title": "t"}
+
+
+def _client_raising(exc_factory: object, *, succeed_after: int = 10**9) -> SimpleNamespace:
+    """A client whose parse() raises exc_factory() until the `succeed_after`-th call."""
+    calls: list[int] = []
+
+    def _parse(**_kw: object) -> SimpleNamespace:
+        calls.append(1)
+        if len(calls) >= succeed_after:
+            return SimpleNamespace(parsed_output=JudgeVerdict(verdict="MATCH", reason="x"))  # type: ignore[arg-type]
+        raise exc_factory()  # type: ignore[operator]
+
+    ns = SimpleNamespace(messages=SimpleNamespace(parse=_parse))
+    ns.calls = calls  # type: ignore[attr-defined]
+    return ns
+
+
+class _Overloaded(Exception):
+    status_code = 529
+
+
+class _Unauthorized(Exception):
+    status_code = 401
+
+
+def test_judge_retries_transient_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    import bench.runner.judge as judge_mod
+
+    monkeypatch.setattr(judge_mod.time, "sleep", lambda *_a: None)
+    client = _client_raising(_Overloaded, succeed_after=3)  # fail twice, then succeed
+    assert make_judge(client=client, model="m")(_GT, _CAND) is True
+    assert len(client.calls) == 3  # 2 transient retries + success — not degraded
+
+
+def test_judge_does_not_retry_permanent_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import bench.runner.judge as judge_mod
+
+    monkeypatch.setattr(judge_mod.time, "sleep", lambda *_a: None)
+    client = _client_raising(_Unauthorized)  # 401 -> permanent
+    assert make_judge(client=client, model="m")(_GT, _CAND) is False
+    assert len(client.calls) == 1  # degrade immediately, no retry
+
+
+def test_judge_degrades_after_exhausting_transient_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    import bench.runner.judge as judge_mod
+
+    monkeypatch.setattr(judge_mod.time, "sleep", lambda *_a: None)
+    client = _client_raising(_Overloaded)  # always overloaded
+    assert make_judge(client=client, model="m")(_GT, _CAND) is False
+    assert len(client.calls) == judge_mod.JUDGE_MAX_RETRIES + 1  # initial try + N retries
