@@ -95,3 +95,14 @@ def test_full_bench_is_eight_cases_standard_and_deep_three_runs():
     modes = {(r.case_id, r.hydra_mode) for r in runs}
     assert len(modes) == 16  # 8 cases x {standard, deep}
     assert all(r.runs == 3 for r in runs)
+
+
+def test_calibrate_mode_is_all_cases_standard_n_runs():
+    # P6 capture mode: every case, standard mode, RUNS_PER_CASE scored slots for the CI baseline
+    from bench.runner.run_bench import RUNS_PER_CASE
+
+    runs = plan_runs(mode="calibrate")
+    assert len({r.case_id for r in runs}) == 8
+    assert all(r.hydra_mode == "standard" for r in runs)
+    assert all(r.runs == RUNS_PER_CASE for r in runs)
+    assert RUNS_PER_CASE >= 5  # N≈5 for bootstrap CIs (spec §4)

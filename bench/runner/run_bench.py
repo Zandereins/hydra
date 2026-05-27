@@ -23,6 +23,11 @@ BASELINES_DIR = ROOT / "bench" / "baselines"
 
 FAST_BENCH_CASES = ["01-axios-header-injection", "04-react-effect-infinite-loop"]
 
+# N scored runs per case for the statistical (CI) baseline — spec §4 N≈5. Each "run" is a
+# retry-cluster (_capture_case_run retries transient headless failures internally); failed
+# clusters are still recorded in outcomes so success-rate stays honest (capture-all).
+RUNS_PER_CASE = int(os.environ.get("HYDRA_RUNS_PER_CASE", "5"))
+
 
 @dataclass(frozen=True)
 class RunSpec:
@@ -40,7 +45,9 @@ def plan_runs(*, mode: str) -> list[RunSpec]:
     """Return the list of RunSpec items for the given bench mode.
 
     fast = cases #1+#4, standard mode, 1 run each (per-commit gate).
-    full = all 5 cases, standard + deep modes, 3 runs each (release gate).
+    full = all cases, standard + deep modes, 3 runs each (release gate).
+    calibrate = all cases, standard mode, RUNS_PER_CASE scored slots each — the P6
+      statistical-baseline capture (median + bootstrap CI over N≈5 scored runs).
     """
     if mode == "fast":
         return [RunSpec(c, "standard", 1) for c in FAST_BENCH_CASES]
@@ -50,6 +57,8 @@ def plan_runs(*, mode: str) -> list[RunSpec]:
             for c in discover_cases()
             for m in ("standard", "deep")
         ]
+    if mode == "calibrate":
+        return [RunSpec(c, "standard", RUNS_PER_CASE) for c in discover_cases()]
     raise ValueError(f"unknown bench mode: {mode!r}")
 
 
@@ -392,7 +401,7 @@ def main() -> None:
     single.add_argument("--json", action="store_true")
 
     bench = sub.add_parser("bench", help="run fast or full bench")
-    bench.add_argument("--mode", choices=["fast", "full"], required=True)
+    bench.add_argument("--mode", choices=["fast", "full", "calibrate"], required=True)
     bench.add_argument("--baseline-out", type=Path, default=None)
     bench.add_argument(
         "--check-baseline",
