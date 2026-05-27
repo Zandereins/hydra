@@ -27,6 +27,43 @@ COMMIT_SHA = os.environ.get("HYDRA_1X_REF", "3506f93")
 HYDRA_1X_LABEL = f"hydra-1.x@{COMMIT_SHA}"
 HYDRA_TIMEOUT_S = int(os.environ.get("HYDRA_TIMEOUT_S", "600"))
 
+# Strict env ALLOWLIST for subprocesses exposed to untrusted workspace content (roadmap
+# 1.1). The /hydra subprocess reviews attacker-influenceable code and the git calls run
+# against an untrusted workspace; a denylist that strips only ANTHROPIC_* still forwards
+# GH_TOKEN / AWS_* / every other secret into a prompt-injectable LLM session or a malicious
+# .gitattributes clean-filter. Subscription auth lives under HOME (~/.claude), NOT in env,
+# so a tight allowlist keeps the headless run working while denying secret exfiltration.
+_ENV_ALLOW_EXACT = frozenset({
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "TMPDIR", "TZ",
+    "LANG", "LC_ALL", "LC_CTYPE",
+})
+_ENV_ALLOW_PREFIX = ("LC_", "CLAUDE_")  # locale categories + Claude Code's own (non-secret) config
+
+
+def _allowed_subprocess_env() -> dict[str, str]:
+    """Env for subprocesses exposed to untrusted workspace content: a strict allowlist.
+
+    ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN are excluded by omission, which also keeps the
+    Opus-heavy /hydra runs subscription-billed (ADR D-3.2) rather than flipping to per-token
+    API billing."""
+    return {
+        k: v for k, v in os.environ.items()
+        if k in _ENV_ALLOW_EXACT or k.startswith(_ENV_ALLOW_PREFIX)
+    }
+
+
+def _git_env() -> dict[str, str]:
+    """Hardened env for git run against an untrusted workspace: the allowlist + neutralised
+    config sources. A workspace ``.gitattributes`` clean/smudge filter resolves its filter
+    command from system/global gitconfig; pinning both to /dev/null (plus NOSYSTEM) closes
+    that exfil/RCE vector. Commit identity is supplied via ``-c`` flags, so no gitconfig is
+    needed; GIT_TERMINAL_PROMPT=0 avoids any credential-prompt hang."""
+    env = _allowed_subprocess_env()
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
+
 
 def _validate_case_id(case_id: str) -> Path:
     """Resolve case_id inside CASES_DIR; raise on traversal, missing, or self-ref (A3-S5)."""
@@ -72,19 +109,20 @@ def prepare_case_workspace(case_id: str) -> Path:
     elif pre_git.is_dir():
         shutil.rmtree(pre_git)
 
+    git_env = _git_env()
     for argv in (
         ["git", "init", "-q"],
         ["git", "add", "-A"],
         ["git", "-c", "user.email=bench@hydra.local", "-c", "user.name=bench",
          "commit", "-qm", "base"],
     ):
-        subprocess.run(argv, cwd=scratch, check=True)
+        subprocess.run(argv, cwd=scratch, check=True, env=git_env)
 
     diff_path = case_dir / "diff.patch"
     try:
         subprocess.run(
             ["git", "apply", "--whitespace=fix", str(diff_path)],
-            cwd=scratch, check=True,
+            cwd=scratch, check=True, env=git_env,
         )
     except subprocess.CalledProcessError as e:
         shutil.rmtree(scratch, ignore_errors=True)
@@ -105,14 +143,11 @@ def invoke_hydra(workspace: Path) -> Path:
     for this subprocess; CLAUDE.md/skills/plugins still load (unlike `--bare`), so
     we benchmark the real product. The operator's interactive sessions are untouched.
     """
-    # Stay subscription-billed (ADR D-3.2). Claude Code gives a present ANTHROPIC_API_KEY
-    # (and ANTHROPIC_AUTH_TOKEN) precedence over the logged-in subscription, which would
-    # silently flip these Opus-heavy /hydra runs to per-token API billing. Strip both from
-    # the subprocess env (keep everything else) so the bench always bills to the plan.
-    sub_env = {
-        k: v for k, v in os.environ.items()
-        if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
-    }
+    # The subprocess reviews untrusted workspace code, so it gets a strict env allowlist
+    # (_allowed_subprocess_env), NOT a denylist: GH_TOKEN/AWS_*/etc. must never reach a
+    # prompt-injectable session. The allowlist also omits ANTHROPIC_API_KEY/AUTH_TOKEN,
+    # which keeps these Opus-heavy /hydra runs subscription-billed (ADR D-3.2) — Claude Code
+    # otherwise gives a present key precedence and flips to per-token API billing.
     subprocess.run(
         ["claude", "--print", "--settings", '{"disableAllHooks": true}', "/hydra this"],
         cwd=str(workspace),
@@ -120,7 +155,7 @@ def invoke_hydra(workspace: Path) -> Path:
         capture_output=True,
         text=True,
         timeout=HYDRA_TIMEOUT_S,
-        env=sub_env,
+        env=_allowed_subprocess_env(),
     )
     reports = sorted((workspace / ".hydra" / "reports").glob("hydra-*.md"))
     if not reports:
