@@ -2,8 +2,14 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
+import pytest
+
+import bench.runner.extract_findings as extract_findings
+import bench.runner.invoke_hydra_1x as invoke_hydra_1x
+import bench.runner.run_bench as run_bench
 from bench.runner.run_bench import (
     aggregate_outcomes,
     gate_against_ci_baseline,
@@ -120,3 +126,117 @@ def test_ci_gate_fails_when_two_cases_disjoint_below(tmp_path: Path) -> None:
 def test_ci_gate_returns_2_on_no_current_data(tmp_path: Path) -> None:
     bl = _ci_baseline(tmp_path, {"c1": (0.8, 1.0), "c2": (0.8, 1.0)})
     assert gate_against_ci_baseline({}, bl) == 2
+
+
+# --- _capture_case_run: capture-all, no selection bias (roadmap 0.2) -------
+
+
+def _wire_capture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    invocations: list[object],
+    extractions: list[list[dict[str, object]]],
+) -> None:
+    """Drive _capture_case_run's collaborators from scripted per-attempt sequences.
+
+    ``invocations[i]`` is either a report Path or an Exception to raise on attempt i;
+    ``extractions[i]`` is the candidate list extract_candidates returns. score_case is
+    stubbed to derive recall from candidate count (a non-empty report that misses the GT
+    still scores recall=0 — the data point the old code wrongly discarded)."""
+    inv_iter = iter(invocations)
+    ext_iter = iter(extractions)
+
+    def fake_invoke(workspace: Path) -> Path:
+        item = next(inv_iter)
+        if isinstance(item, Exception):
+            raise item
+        return tmp_path / "report.md"
+
+    def fake_extract(report_path: Path) -> list[dict[str, object]]:
+        return next(ext_iter)
+
+    def fake_score(
+        gt: list[dict[str, object]], cands: list[dict[str, object]], **_: object
+    ) -> CaseScore:
+        # a report with candidates that miss the GT scores recall=0 (genuine miss);
+        # an empty report scores recall=0 too — the discriminator is candidate count.
+        return _score(1.0, recall=0.5) if cands else _score(0.0, recall=0.0)
+
+    monkeypatch.setattr(invoke_hydra_1x, "prepare_case_workspace", lambda case_id: tmp_path)
+    monkeypatch.setattr(invoke_hydra_1x, "invoke_hydra", fake_invoke)
+    monkeypatch.setattr(extract_findings, "extract_candidates", fake_extract)
+    monkeypatch.setattr(run_bench, "score_case", fake_score)
+    monkeypatch.setattr(run_bench, "load_ground_truth", lambda case_id: [])
+    monkeypatch.setattr(run_bench, "load_negative_anchors", lambda case_id: [])
+
+
+def test_capture_keeps_a_scored_run_even_with_zero_recall(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The bug: a report WITH findings that miss the GT (recall=0) is a real quality
+    # data point; the old code retried it away, biasing the baseline upward. It must be
+    # accepted on the first scored attempt.
+    # Script enough attempts that the OLD (buggy) code, which retries every recall=0 run,
+    # exhausts them and we see ["action_less"]*N — a clean assertion failure, not an error.
+    _wire_capture(
+        monkeypatch, tmp_path,
+        invocations=[tmp_path] * run_bench.MAX_ATTEMPTS,
+        extractions=[[{"file": "a.js", "lines": "1"}]] * run_bench.MAX_ATTEMPTS,
+    )
+    # A report with candidates that all miss the GT scores recall=0 — the data point the
+    # old code discarded. Force that regardless of candidate count:
+    monkeypatch.setattr(run_bench, "score_case", lambda gt, c, **k: _score(0.0, recall=0.0))
+    score, outcomes = run_bench._capture_case_run("c", judge=None)
+    assert score is not None
+    assert score.recall == 0.0
+    assert outcomes == ["scored"]  # accepted immediately, NOT retried away
+
+
+def test_capture_retries_empty_report_as_harness_degradation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # An empty/action-less report (0 candidates) is documented headless degradation, not
+    # a quality signal -> retried; the first report WITH findings is then kept.
+    _wire_capture(
+        monkeypatch, tmp_path,
+        invocations=[tmp_path, tmp_path],
+        extractions=[[], [{"file": "a.js", "lines": "1"}]],
+    )
+    score, outcomes = run_bench._capture_case_run("c", judge=None)
+    assert score is not None and score.recall == 0.5
+    assert outcomes == ["action_less", "scored"]
+
+
+def test_capture_returns_none_when_every_attempt_degrades(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # All MAX_ATTEMPTS produce empty reports -> no quality data point; return None so the
+    # case is absent from the gate (harness outage), never a fabricated recall=0 score.
+    _wire_capture(
+        monkeypatch, tmp_path,
+        invocations=[tmp_path] * run_bench.MAX_ATTEMPTS,
+        extractions=[[]] * run_bench.MAX_ATTEMPTS,
+    )
+    score, outcomes = run_bench._capture_case_run("c", judge=None)
+    assert score is None
+    assert outcomes == ["action_less"] * run_bench.MAX_ATTEMPTS
+
+
+def test_capture_retries_transient_failures_then_scores(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # timeout + no-report are transient infra failures -> retried + recorded for the
+    # success-rate telemetry, then the first scored run is accepted.
+    _wire_capture(
+        monkeypatch, tmp_path,
+        invocations=[
+            subprocess.TimeoutExpired(cmd="claude", timeout=1),
+            RuntimeError("no report produced"),
+            tmp_path,
+        ],
+        extractions=[[{"file": "a.js", "lines": "1"}]],
+    )
+    score, outcomes = run_bench._capture_case_run("c", judge=None)
+    assert score is not None and score.recall == 0.5
+    assert outcomes == ["timeout", "no_report", "scored"]
