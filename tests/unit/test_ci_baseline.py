@@ -240,3 +240,34 @@ def test_capture_retries_transient_failures_then_scores(
     score, outcomes = run_bench._capture_case_run("c", judge=None)
     assert score is not None and score.recall == 0.5
     assert outcomes == ["timeout", "no_report", "scored"]
+
+
+def test_capture_retries_non_zero_claude_exit_not_crashes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A non-zero `claude --print` exit (rate limit / transient) raised CalledProcessError,
+    # which _capture_case_run did NOT catch -> it aborted the entire multi-hour capture with
+    # no baseline written. It must instead be a retryable harness failure.
+    _wire_capture(
+        monkeypatch, tmp_path,
+        invocations=[subprocess.CalledProcessError(1, "claude"), tmp_path],
+        extractions=[[{"file": "a.js", "lines": "1"}]],
+    )
+    score, outcomes = run_bench._capture_case_run("c", judge=None)
+    assert score is not None and score.recall == 0.5
+    assert outcomes == ["invoke_error", "scored"]
+
+
+def test_capture_returns_none_when_every_invocation_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A sustained outage (e.g. the plan rate limit) where every attempt exits non-zero must
+    # yield None (case absent from the gate = honest outage), never crash the run.
+    _wire_capture(
+        monkeypatch, tmp_path,
+        invocations=[subprocess.CalledProcessError(1, "claude")] * run_bench.MAX_ATTEMPTS,
+        extractions=[],
+    )
+    score, outcomes = run_bench._capture_case_run("c", judge=None)
+    assert score is None
+    assert outcomes == ["invoke_error"] * run_bench.MAX_ATTEMPTS

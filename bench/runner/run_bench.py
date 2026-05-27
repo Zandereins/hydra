@@ -259,8 +259,11 @@ def _capture_case_run(case_id: str, judge: object) -> tuple[CaseScore | None, li
     miss the seeded bug is a genuine quality data point, not flakiness, and discarding it
     (the old recall>0 condition) biased the baseline upward. Returns None only when every
     attempt was a harness failure (no quality data point — the case is then absent from the
-    gate, an outage, never a fabricated recall=0 score). Genuine errors (git apply,
-    CalledProcessError, Python/SDK exceptions) still propagate."""
+    gate, an outage, never a fabricated recall=0 score). Retryable harness failures: timeout,
+    no-report, action-less, and a non-zero `claude` exit (rate limit / transient — caught so
+    one bad exit can't abort a multi-hour capture). Genuine errors still propagate: the git
+    CalledProcessError from prepare_case_workspace (raised before the try) and any Python/SDK
+    exception during scoring."""
     import shutil
 
     from bench.runner.extract_findings import extract_candidates
@@ -274,6 +277,14 @@ def _capture_case_run(case_id: str, judge: object) -> tuple[CaseScore | None, li
             candidates = extract_candidates(report_path)  # prefer .findings.json sidecar
         except subprocess.TimeoutExpired:
             outcomes.append("timeout")
+            continue
+        except subprocess.CalledProcessError:
+            # `claude --print` exited non-zero (plan rate limit / transient API error /
+            # headless crash). A single such exit must NOT abort the whole multi-hour
+            # capture — treat it as a retryable harness failure. (The git CalledProcessError
+            # from prepare_case_workspace is raised OUTSIDE this try and still propagates as
+            # a genuine error.)
+            outcomes.append("invoke_error")
             continue
         except RuntimeError:  # invoke_hydra: "no report produced"
             outcomes.append("no_report")
