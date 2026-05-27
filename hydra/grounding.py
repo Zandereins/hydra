@@ -12,36 +12,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from hydra.envelopes import AdvisorFinding, GroundingStatus, Position, Severity
+from hydra.line_spec import parse_line_spans
 from hydra.path_safety import PathEscapeError, contained_path
 
 DEFAULT_MAX_LINES = 200  # DoS cap: never read more than this many lines for one citation
 DEFAULT_MAX_LINE_BYTES = 4096  # DoS cap: bound bytes per line (pathological minified files)
-_MAX_LINE_SPANS = 32  # DoS cap: bound comma-spans parsed from one citation
 
 
 def _parse_line_range(lines: str) -> tuple[int, int] | None:
-    """Parse a 1-indexed line spec to (min_start, max_end).
+    """Parse a 1-indexed line spec to (min_start, max_end) for the grounder's window.
 
-    Accepts single ('142'), range ('142-158'), and comma multi-span
-    ('15,21-22' -> (15, 22)) — real Hydra citations use all three forms, matching
-    bench scoring's grammar. Returns None if any part is unparseable or reversed/zero.
+    Delegates the grammar to the shared :func:`hydra.line_spec.parse_line_spans` (single
+    source of truth) and collapses the sub-spans to the enclosing window. Returns None when
+    nothing parses — e.g. '' / 'abc' / a lone reversed span — so callers demote a finding
+    whose citation cannot be located.
     """
-    spans: list[tuple[int, int]] = []
-    for part in lines.split(",")[:_MAX_LINE_SPANS]:
-        part = part.strip()
-        if not part:
-            continue
-        try:
-            if "-" in part:
-                a_str, b_str = part.split("-", 1)
-                a, b = int(a_str), int(b_str)
-            else:
-                a = b = int(part)
-        except ValueError:
-            return None
-        if a < 1 or b < a:
-            return None
-        spans.append((a, b))
+    spans = parse_line_spans(lines)
     if not spans:
         return None
     return min(s for s, _ in spans), max(e for _, e in spans)

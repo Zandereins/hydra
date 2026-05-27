@@ -116,10 +116,11 @@ def test_range_tol_is_five() -> None:
 
 
 def test_parse_ranges_caps_pathological_span_count() -> None:
-    from bench.runner.scoring import _MAX_SPANS, _parse_ranges
+    # the matcher shares hydra.line_spec.parse_line_spans (single source of truth)
+    from hydra.line_spec import MAX_LINE_SPANS, parse_line_spans
 
     spec = ",".join(str(i) for i in range(1, 500))  # 499 comma-spans
-    assert len(_parse_ranges(spec)) == _MAX_SPANS  # bounded against adversarial mega-spec
+    assert len(parse_line_spans(spec)) == MAX_LINE_SPANS  # bounded against adversarial mega-spec
 
 
 def test_comma_separated_candidate_lines_match() -> None:
