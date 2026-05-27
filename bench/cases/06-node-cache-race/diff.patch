@@ -43,10 +43,10 @@ index 6648566..a59f986 100644
      return false; // limit already hit
    }
  
-+  // BUG: await here yields to the event loop. A second concurrent request
-+  // for the same IP reads the same entry.count before either write lands,
-+  // so both see count < MAX_REQUESTS and both increment — allowing up to
-+  // 2× MAX_REQUESTS requests through before the limit engages.
++  // Audit the request before incrementing so the stored count and the audit
++  // trail commit together. We await the write to keep it durable before the
++  // request is reported as allowed; the hook was added for the new compliance
++  // logging requirement.
 +  await persistAuditEvent(ip, entry.count + 1);
 +
    entry.count += 1;
