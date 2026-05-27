@@ -4,6 +4,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from hydra.line_spec import parse_line_spans
+
 
 @dataclass(frozen=True)
 class CaseScore:
@@ -26,45 +28,20 @@ class FindingMatch:
     candidate_idx: int
 
 
-_MAX_SPANS = 32  # cap comma-spans so a pathological candidate can't drive O(n*m) overlap
-
-
-def _parse_ranges(spec: str) -> list[tuple[int, int]]:
-    """Parse a line spec into (start, end) pairs.
-
-    Handles single ('15'), range ('13-23'), and comma-separated multi-spans
-    ('15,21-22' -> [(15,15),(21,22)]) — real Hydra reports cite all three forms.
-    At most _MAX_SPANS spans are parsed (real citations have a handful; the cap
-    bounds the matcher against an adversarial mega-spec).
-    """
-    out: list[tuple[int, int]] = []
-    for part in spec.split(",")[:_MAX_SPANS]:
-        part = part.strip()
-        if not part:
-            continue
-        if "-" in part:
-            a_str, b_str = part.split("-", 1)
-            a, b = int(a_str), int(b_str)
-        else:
-            a = b = int(part)
-        if a < 1 or b < a:
-            continue  # skip zero/negative/reversed spans (matches grounding's validation)
-        out.append((a, b))
-    return out
-
-
 RANGE_TOL = 5  # spec §11.4 (was hardcoded 10); calibrate against baseline before freezing
 
 Judge = Callable[[dict[str, object], dict[str, object]], bool]
 
 
 def _ranges_overlap(a: str, b: str, tol: int = RANGE_TOL) -> bool:
-    """True if ANY sub-span of a overlaps ANY sub-span of b (within tol)."""
-    try:
-        a_spans = _parse_ranges(a)
-        b_spans = _parse_ranges(b)
-    except ValueError:
-        return False
+    """True if ANY sub-span of a overlaps ANY sub-span of b (within tol).
+
+    Uses the shared :func:`hydra.line_spec.parse_line_spans` (single source of truth) so
+    the matcher and the grounder parse identical grammar. Unparseable specs yield no spans
+    -> no overlap.
+    """
+    a_spans = parse_line_spans(a)
+    b_spans = parse_line_spans(b)
     return any(
         not (a2 + tol < b1 or b2 + tol < a1)
         for (a1, a2) in a_spans
