@@ -1,7 +1,7 @@
 """Statistical core for the calibrated baseline (Track-3 P3, spec §4/§10)."""
 from __future__ import annotations
 
-from bench.runner.stats import MetricCI, bootstrap_ci, ci_regression, success_rate
+from bench.runner.stats import MetricCI, bootstrap_ci, ci_regression, success_rate, wilson_ci
 
 # --- bootstrap_ci ---------------------------------------------------------
 
@@ -38,6 +38,56 @@ def test_wider_spread_gives_wider_ci() -> None:
     tight = bootstrap_ci([0.5, 0.5, 0.5, 0.5, 0.6, 0.4])
     wide = bootstrap_ci([0.0, 1.0, 0.0, 1.0, 0.5, 0.5])
     assert (wide.ci_high - wide.ci_low) >= (tight.ci_high - tight.ci_low)
+
+
+# --- wilson_ci (proportion CI for the binary critical_recall gate) --------
+
+
+def test_wilson_empty_returns_zeros() -> None:
+    assert wilson_ci(0, 0) == MetricCI(0.0, 0.0, 0.0)
+
+
+def test_wilson_point_is_the_sample_proportion() -> None:
+    assert wilson_ci(4, 5).median == 0.8
+
+
+def test_wilson_bounds_are_clamped_to_unit_interval() -> None:
+    ci = wilson_ci(2, 5)
+    assert 0.0 <= ci.ci_low <= ci.median <= ci.ci_high <= 1.0
+
+
+def test_wilson_all_success_is_not_certain_at_small_n() -> None:
+    # 5/5 is NOT proof of a perfect detector — the honest lower bound is well below 1.
+    ci = wilson_ci(5, 5)
+    assert ci.median == 1.0
+    assert ci.ci_high == 1.0
+    assert ci.ci_low < 1.0
+
+
+def test_wilson_zero_success_has_upper_bound_below_half() -> None:
+    ci = wilson_ci(0, 5)
+    assert ci.median == 0.0
+    assert 0.0 < ci.ci_high < 0.5
+
+
+def test_wilson_more_data_tightens_the_interval() -> None:
+    narrow = wilson_ci(20, 20)
+    wide = wilson_ci(5, 5)
+    assert (narrow.ci_high - narrow.ci_low) < (wide.ci_high - wide.ci_low)
+
+
+def test_wilson_fixes_the_binary_blindness_bootstrap_cannot_see() -> None:
+    # The bug (roadmap 0.1): bootstrap-of-median on a binary metric is blind. A single
+    # flaky miss in an otherwise-perfect baseline opens its CI to [0, 1], after which no
+    # challenger can ever be "strictly below" -> the gate can never fire.
+    blind = bootstrap_ci([1.0, 1.0, 1.0, 1.0, 0.0])
+    assert blind.ci_low == 0.0  # 4/5 baseline -> lower bound pinned at 0 -> gate dead
+
+    # Wilson treats the same data as a proportion: its lower bound is meaningfully > 0,
+    # so a genuine drop becomes detectable, and the interval is disjoint from a real
+    # regression at adequate N (20/20 vs 4/20).
+    assert wilson_ci(4, 5).ci_low > 0.0
+    assert wilson_ci(4, 20).ci_high < wilson_ci(20, 20).ci_low
 
 
 # --- ci_regression (non-overlapping CIs = real difference) ---------------

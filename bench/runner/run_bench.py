@@ -15,7 +15,7 @@ import yaml
 
 from bench.runner.models import GroundTruthFinding, NegativeAnchor
 from bench.runner.scoring import CaseScore, score_case
-from bench.runner.stats import MetricCI, bootstrap_ci, ci_regression, success_rate
+from bench.runner.stats import MetricCI, bootstrap_ci, ci_regression, success_rate, wilson_ci
 
 ROOT = Path(__file__).resolve().parents[2]
 CASES_DIR = ROOT / "bench" / "cases"
@@ -155,8 +155,20 @@ def aggregate_outcomes(outcomes: list[str]) -> tuple[int, int, dict[str, int]]:
 
 
 def metric_cis(scores: list[CaseScore], *, seed: int = 0) -> dict[str, MetricCI]:
-    """Bootstrap 95% CI per gate metric over one case's scored runs."""
-    return {m: bootstrap_ci([getattr(s, m) for s in scores], seed=seed) for m in CI_METRICS}
+    """95% CI per gate metric over one case's scored runs.
+
+    ``critical_recall`` is binary per run (one mandatory finding/case -> caught or not),
+    so it uses the Wilson *proportion* interval; bootstrap-of-median is blind on binary
+    data (roadmap 0.1). The continuous diagnostic metrics (recall/f1/false_positive_rate)
+    keep the bootstrap-of-median CI."""
+    cis = {
+        m: bootstrap_ci([getattr(s, m) for s in scores], seed=seed)
+        for m in CI_METRICS
+        if m != "critical_recall"
+    }
+    crit_caught = sum(1 for s in scores if s.critical_recall >= 1.0)
+    cis["critical_recall"] = wilson_ci(crit_caught, len(scores))
+    return cis
 
 
 def write_ci_baseline(

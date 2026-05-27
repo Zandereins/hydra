@@ -8,6 +8,7 @@ than an arbitrary threshold. Stdlib only (no numpy): `random` + `statistics`.
 """
 from __future__ import annotations
 
+import math
 import random
 import statistics
 from collections.abc import Sequence
@@ -53,6 +54,31 @@ def bootstrap_ci(
     hi = medians[min(n_resamples - 1, int((1.0 - alpha) * n_resamples))]
     # Guarantee the point estimate sits inside its own interval.
     return MetricCI(point, min(lo, point), max(hi, point))
+
+
+def wilson_ci(successes: int, n: int, *, confidence: float = 0.95) -> MetricCI:
+    """Wilson score interval for a binomial proportion ``successes / n``.
+
+    The gate metric ``critical_recall`` is binary per run (each case has exactly one
+    mandatory finding -> caught or not), so a run is a Bernoulli trial. Bootstrap-of-
+    median is the *wrong* tool for binary data (roadmap 0.1): on e.g. ``[1,1,1,1,0]`` it
+    pins the lower bound at 0, leaving the gate unable to ever fire. The Wilson interval
+    is the standard, well-behaved CI for a proportion: it stays inside ``[0, 1]``, never
+    collapses to a degenerate point at the boundaries, and tightens as ``n`` grows — so
+    the gate's power scales with the number of captured runs. Point estimate = the sample
+    proportion (stored in ``median`` for a uniform :class:`MetricCI` shape). ``n == 0``
+    yields all-zeros (no data)."""
+    if n <= 0:
+        return MetricCI(0.0, 0.0, 0.0)
+    z = statistics.NormalDist().inv_cdf((1.0 + confidence) / 2.0)
+    p = successes / n
+    z2 = z * z
+    denom = 1.0 + z2 / n
+    center = (p + z2 / (2.0 * n)) / denom
+    margin = (z / denom) * math.sqrt(p * (1.0 - p) / n + z2 / (4.0 * n * n))
+    lo = max(0.0, center - margin)
+    hi = min(1.0, center + margin)
+    return MetricCI(p, min(lo, p), max(hi, p))
 
 
 @dataclass(frozen=True)
