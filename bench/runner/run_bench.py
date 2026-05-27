@@ -251,29 +251,27 @@ def _median_metric_by_case(run_records: list[dict[str, Any]], attr: str) -> dict
 
 
 def _capture_case_run(case_id: str, judge: object) -> tuple[CaseScore | None, list[str]]:
-    """One median-slot for a case: retry transient headless failures up to MAX_ATTEMPTS,
-    accepting the first scored run with recall>0 (else the last scored run, else None).
-    Records a per-attempt outcome label for telemetry. Genuine errors (git apply,
-    CalledProcessError, Python/SDK exceptions) propagate — only timeout/no-report/
-    action-less are retried."""
+    """One scored slot for a case (capture-all, spec §4: "the retry loop records, it does
+    not cherry-pick"). Retries only *harness* failures — transient (timeout / no report
+    file) and degraded action-less reports (zero extractable findings, the documented
+    headless flakiness) — up to MAX_ATTEMPTS. The FIRST run that produces a scorable report
+    (>=1 candidate) is accepted and returned *regardless of recall*: a report whose findings
+    miss the seeded bug is a genuine quality data point, not flakiness, and discarding it
+    (the old recall>0 condition) biased the baseline upward. Returns None only when every
+    attempt was a harness failure (no quality data point — the case is then absent from the
+    gate, an outage, never a fabricated recall=0 score). Genuine errors (git apply,
+    CalledProcessError, Python/SDK exceptions) still propagate."""
     import shutil
 
     from bench.runner.extract_findings import extract_candidates
     from bench.runner.invoke_hydra_1x import invoke_hydra, prepare_case_workspace
 
     outcomes: list[str] = []
-    last_scored: CaseScore | None = None
     for _ in range(MAX_ATTEMPTS):
         workspace = prepare_case_workspace(case_id)
         try:
             report_path = invoke_hydra(workspace)
             candidates = extract_candidates(report_path)  # prefer .findings.json sidecar
-            score = score_case(
-                load_ground_truth(case_id),
-                candidates,
-                judge=judge,  # type: ignore[arg-type]
-                negative_anchors=load_negative_anchors(case_id),
-            )
         except subprocess.TimeoutExpired:
             outcomes.append("timeout")
             continue
@@ -282,12 +280,20 @@ def _capture_case_run(case_id: str, judge: object) -> tuple[CaseScore | None, li
             continue
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
-        last_scored = score
-        if score.recall > 0:
-            outcomes.append("scored")
-            return score, outcomes
-        outcomes.append("action_less")
-    return last_scored, outcomes
+        if not candidates:
+            # A report with zero extractable findings is the documented headless
+            # degradation (action-less report), not a quality signal — retry it.
+            outcomes.append("action_less")
+            continue
+        score = score_case(
+            load_ground_truth(case_id),
+            candidates,
+            judge=judge,  # type: ignore[arg-type]
+            negative_anchors=load_negative_anchors(case_id),
+        )
+        outcomes.append("scored")
+        return score, outcomes  # capture-all: keep this run even if recall == 0
+    return None, outcomes
 
 
 def _print_telemetry(
