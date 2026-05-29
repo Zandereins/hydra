@@ -149,12 +149,16 @@ def score_case(
     critical_recall = matched_mandatory / max(len(mandatory), 1)
 
     neg = negative_anchors or []
-    false_positives = sum(
-        1
-        for ci, cand in enumerate(candidates)
-        if ci not in used and _overlaps_any_negative(cand, neg)
+    unmatched = [cand for ci, cand in enumerate(candidates) if ci not in used]
+    # false_positives: raw count of unmatched candidates that landed on a benign distractor.
+    false_positives = sum(1 for cand in unmatched if _overlaps_any_negative(cand, neg))
+    # false_positive_rate: share of KNOWN distractors the model was fooled into flagging.
+    # Denominator is the anchor count, not the candidate count, so a precise model (few
+    # candidates) is never penalised harder than a noisy one for the same distractor hit.
+    flagged_negatives = sum(
+        1 for na in neg if any(_overlaps_any_negative(cand, [na]) for cand in unmatched)
     )
-    false_positive_rate = false_positives / max(len(candidates), 1)
+    false_positive_rate = flagged_negatives / max(len(neg), 1)
 
     return CaseScore(
         recall=recall,
