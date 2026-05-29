@@ -167,6 +167,26 @@ def test_judge_not_called_when_range_fails() -> None:
     assert calls == []  # pre-filter rejected before judge
 
 
+# --- optimal matching: overlapping GT ranges must not misattribute recall (Tier-2) ---
+
+def test_overlapping_gt_uses_optimal_matching_not_greedy() -> None:
+    # Two GT findings on overlapping ranges. Candidate X satisfies BOTH; candidate Y
+    # satisfies ONLY A. Greedy (GT order, first free candidate) lets A grab X, leaving B
+    # with only Y -> B missed (recall 0.5). Optimal matching assigns A<-Y, B<-X -> both
+    # matched (recall 1.0). cases 01/05/07/08 have such overlapping intra-case ranges.
+    gt = [
+        _gt(file="a.js", lines="10-20", must_mention=("alpha",)),
+        _gt(file="a.js", lines="10-20", must_mention=("beta",)),
+    ]
+    cands = [
+        _cand(file="a.js", lines="10-12", title="alpha and beta both here"),  # matches A & B
+        _cand(file="a.js", lines="10-12", title="alpha only here"),           # matches A only
+    ]
+    score = score_case(gt, cands, judge=None)
+    assert score.matched == 2
+    assert score.recall == 1.0
+
+
 # --- false_positive_rate: explicit distractor-resistance metric (Track-3 P2) ---
 
 def test_no_negative_anchors_means_zero_fp_rate() -> None:
