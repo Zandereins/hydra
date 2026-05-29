@@ -206,7 +206,7 @@ def test_candidate_overlapping_negative_anchor_is_a_false_positive() -> None:
     score = score_case(gt, cands, negative_anchors=neg)
     assert score.matched == 1
     assert score.false_positives == 1
-    assert score.false_positive_rate == 0.5  # 1 FP / 2 candidates
+    assert score.false_positive_rate == 1.0  # the one known distractor was flagged: 1/1
 
 
 def test_matched_candidate_is_not_counted_as_false_positive() -> None:
@@ -227,3 +227,34 @@ def test_negative_anchor_in_other_file_is_not_a_false_positive() -> None:
     score = score_case(gt, cands, negative_anchors=neg)
     assert score.false_positives == 0
     assert score.false_positive_rate == 0.0
+
+
+def test_fp_rate_is_fraction_of_distractors_not_candidate_count() -> None:
+    # FP-rate must measure "what share of the known distractors did the model flag",
+    # independent of candidate count — else a precise model (few candidates) is punished
+    # harder than a noisy one for the SAME mistake. One NA, flagged -> rate 1.0 regardless
+    # of how much extra noise the report carries.
+    neg = [{"file": "a.js", "lines": "40-42", "why_benign": "guarded eval"}]
+    gt = [_gt(file="a.js", lines="10-20")]
+    precise = [
+        _cand(file="a.js", lines="12-14", title="CRLF header injection"),  # real match
+        _cand(file="a.js", lines="40-41", title="flags the distractor"),    # FP on the NA
+    ]
+    noisy = precise + [
+        _cand(file="a.js", lines=str(i), title="harmless noise") for i in range(60, 70)
+    ]
+    rate_precise = score_case(gt, precise, negative_anchors=neg).false_positive_rate
+    rate_noisy = score_case(gt, noisy, negative_anchors=neg).false_positive_rate
+    assert rate_precise == rate_noisy == 1.0  # the one distractor was flagged: 1/1
+
+
+def test_fp_rate_partial_distractor_coverage() -> None:
+    # two distractors, model flags only one -> rate 0.5 (one of two distractors fooled it)
+    neg = [
+        {"file": "a.js", "lines": "40-42", "why_benign": "x"},
+        {"file": "a.js", "lines": "80-82", "why_benign": "y"},
+    ]
+    gt = [_gt(file="a.js", lines="10-20")]
+    cands = [_cand(file="a.js", lines="41", title="flags first distractor only")]
+    score = score_case(gt, cands, negative_anchors=neg)
+    assert score.false_positive_rate == 0.5
