@@ -45,11 +45,38 @@ def _allowed_subprocess_env() -> dict[str, str]:
 
     ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN are excluded by omission, which also keeps the
     Opus-heavy /hydra runs subscription-billed (ADR D-3.2) rather than flipping to per-token
-    API billing."""
+    API billing. The ``CLAUDE_`` prefix forwards Claude Code's own config AND, deliberately,
+    ``CLAUDE_CODE_OAUTH_TOKEN`` — the one auth secret we forward on purpose (see
+    _headless_auth_env): it is the inference-only, revocable subscription token that lets the
+    subprocess authenticate WITHOUT unlocking the macOS keychain."""
     return {
         k: v for k, v in os.environ.items()
         if k in _ENV_ALLOW_EXACT or k.startswith(_ENV_ALLOW_PREFIX)
     }
+
+
+def _headless_auth_env() -> dict[str, str]:
+    """Allowlisted env for the headless /hydra run, with the keychain-free auth credential
+    enforced.
+
+    Requires ``CLAUDE_CODE_OAUTH_TOKEN`` (from ``claude setup-token`` — auth precedence ABOVE
+    the macOS keychain, billed to the subscription plan). Requiring it is the security fix for
+    the keychain bypass: without the token `claude` falls back to the login keychain, which
+    (a) raises a per-invocation unlock dialog across a multi-hour capture and (b) leaves the
+    keychain UNLOCKED, exposing every other secret in it (gh/AWS/…) to this untrusted-
+    workspace, prompt-injectable subprocess — defeating the env allowlist out-of-band. We fail
+    fast rather than silently degrade into that. The token is inference-only and revocable
+    (re-run ``claude setup-token`` to rotate)."""
+    env = _allowed_subprocess_env()
+    if not env.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        raise RuntimeError(
+            "CLAUDE_CODE_OAUTH_TOKEN is not set. The headless /hydra subprocess needs it for "
+            "subscription auth without the macOS keychain; without it `claude` triggers a "
+            "per-invocation keychain unlock prompt and leaves the keychain unlocked to this "
+            "untrusted-workspace subprocess. Run `claude setup-token` and export "
+            "CLAUDE_CODE_OAUTH_TOKEN before the capture."
+        )
+    return env
 
 
 def _git_env() -> dict[str, str]:
@@ -150,10 +177,13 @@ def invoke_hydra(workspace: Path) -> Path:
     we benchmark the real product. The operator's interactive sessions are untouched.
     """
     # The subprocess reviews untrusted workspace code, so it gets a strict env allowlist
-    # (_allowed_subprocess_env), NOT a denylist: GH_TOKEN/AWS_*/etc. must never reach a
+    # (_headless_auth_env), NOT a denylist: GH_TOKEN/AWS_*/etc. must never reach a
     # prompt-injectable session. The allowlist also omits ANTHROPIC_API_KEY/AUTH_TOKEN,
     # which keeps these Opus-heavy /hydra runs subscription-billed (ADR D-3.2) — Claude Code
-    # otherwise gives a present key precedence and flips to per-token API billing.
+    # otherwise gives a present key precedence and flips to per-token API billing. Auth is the
+    # CLAUDE_CODE_OAUTH_TOKEN (enforced by _headless_auth_env) so `claude` never reads the
+    # macOS keychain — no unlock prompt, and the keychain stays locked (no out-of-band secret
+    # exfil past the allowlist).
     subprocess.run(
         ["claude", "--print", "--settings", '{"disableAllHooks": true}', "/hydra this"],
         cwd=str(workspace),
@@ -161,7 +191,7 @@ def invoke_hydra(workspace: Path) -> Path:
         capture_output=True,
         text=True,
         timeout=HYDRA_TIMEOUT_S,
-        env=_allowed_subprocess_env(),
+        env=_headless_auth_env(),
     )
     reports = sorted((workspace / ".hydra" / "reports").glob("hydra-*.md"))
     if not reports:
