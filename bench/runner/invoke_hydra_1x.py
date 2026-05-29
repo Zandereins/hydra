@@ -96,39 +96,45 @@ def prepare_case_workspace(case_id: str) -> Path:
         raise RuntimeError(f"no workspace/ dir for case {case_id}")
 
     scratch = Path(tempfile.mkdtemp(prefix=f"hydra-case-{case_id}-"))
-    shutil.copytree(workspace_src, scratch, dirs_exist_ok=True)
-
-    # Scrub any pre-existing .git/ before `git init` — workspace may ship
-    # malicious .git/hooks/post-commit (or pre-commit, etc.) that `shutil.copytree`
-    # preserves and `git init` does NOT overwrite. Without this, `git commit`
-    # below executes attacker code as the user. Live RCE verified pre-fix.
-    # Handle .git as directory, file (gitlink), or symlink — Iteration-2 F1.
-    pre_git = scratch / ".git"
-    if pre_git.is_symlink() or pre_git.is_file():
-        pre_git.unlink()
-    elif pre_git.is_dir():
-        shutil.rmtree(pre_git)
-
-    git_env = _git_env()
-    for argv in (
-        ["git", "init", "-q"],
-        ["git", "add", "-A"],
-        ["git", "-c", "user.email=bench@hydra.local", "-c", "user.name=bench",
-         "commit", "-qm", "base"],
-    ):
-        subprocess.run(argv, cwd=scratch, check=True, env=git_env)
-
-    diff_path = case_dir / "diff.patch"
+    # Any failure after mkdtemp (copytree, a git step, an unapplicable diff, or a
+    # KeyboardInterrupt mid-capture) must remove the scratch dir — otherwise a 40-run
+    # capture leaks one tmpdir per failed run. BaseException so Ctrl-C cleans up too.
     try:
-        subprocess.run(
-            ["git", "apply", "--whitespace=fix", str(diff_path)],
-            cwd=scratch, check=True, env=git_env,
-        )
-    except subprocess.CalledProcessError as e:
+        shutil.copytree(workspace_src, scratch, dirs_exist_ok=True)
+
+        # Scrub any pre-existing .git/ before `git init` — workspace may ship
+        # malicious .git/hooks/post-commit (or pre-commit, etc.) that `shutil.copytree`
+        # preserves and `git init` does NOT overwrite. Without this, `git commit`
+        # below executes attacker code as the user. Live RCE verified pre-fix.
+        # Handle .git as directory, file (gitlink), or symlink — Iteration-2 F1.
+        pre_git = scratch / ".git"
+        if pre_git.is_symlink() or pre_git.is_file():
+            pre_git.unlink()
+        elif pre_git.is_dir():
+            shutil.rmtree(pre_git)
+
+        git_env = _git_env()
+        for argv in (
+            ["git", "init", "-q"],
+            ["git", "add", "-A"],
+            ["git", "-c", "user.email=bench@hydra.local", "-c", "user.name=bench",
+             "commit", "-qm", "base"],
+        ):
+            subprocess.run(argv, cwd=scratch, check=True, env=git_env)
+
+        diff_path = case_dir / "diff.patch"
+        try:
+            subprocess.run(
+                ["git", "apply", "--whitespace=fix", str(diff_path)],
+                cwd=scratch, check=True, env=git_env,
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(
+                f"git apply failed for {diff_path} in workspace {scratch}"
+            ) from e
+    except BaseException:
         shutil.rmtree(scratch, ignore_errors=True)
-        raise RuntimeError(
-            f"git apply failed for {diff_path} in workspace {scratch}"
-        ) from e
+        raise
 
     return scratch
 

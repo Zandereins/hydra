@@ -170,6 +170,28 @@ def test_prepare_case_workspace_real_case_applies_diff() -> None:
         shutil.rmtree(workspace, ignore_errors=True)
 
 
+def test_prepare_case_workspace_cleans_up_scratch_on_git_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A git step failing AFTER mkdtemp must not leak the scratch tmpdir — over a 40-run
+    capture a leak per failed run accumulates. An empty workspace makes `git commit` fail
+    with 'nothing to commit', exercising the previously-unguarded init/add/commit block."""
+    import tempfile as _tempfile
+
+    from bench.runner import invoke_hydra_1x
+    fake_case = tmp_path / "empty-ws-case"
+    (fake_case / "workspace").mkdir(parents=True)  # empty -> `git commit` fails
+    (fake_case / "diff.patch").write_text("")
+    monkeypatch.setattr(invoke_hydra_1x, "CASES_DIR", tmp_path)
+
+    pattern = "hydra-case-empty-ws-case-*"
+    before = set(Path(_tempfile.gettempdir()).glob(pattern))
+    with pytest.raises(subprocess.CalledProcessError):
+        invoke_hydra_1x.prepare_case_workspace("empty-ws-case")
+    after = set(Path(_tempfile.gettempdir()).glob(pattern))
+    assert after == before, "scratch dir leaked on git commit failure"
+
+
 def test_validate_case_id_rejects_traversal() -> None:
     """A3-S5: --cases ../../tmp/evil must be rejected before any filesystem ops."""
     from bench.runner.invoke_hydra_1x import _validate_case_id
