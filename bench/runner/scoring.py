@@ -87,6 +87,32 @@ def _overlaps_any_negative(
     )
 
 
+def _max_bipartite_matching(adjacency: list[list[int]]) -> dict[int, int]:
+    """Maximum-cardinality one-to-one matching via Kuhn's augmenting-path algorithm.
+
+    ``adjacency[gi]`` lists the candidate indices that match ground-truth ``gi``. Returns
+    ``{candidate_idx: ground_truth_idx}``. Greedy (first free candidate per GT in order)
+    under-counts when GT ranges overlap: an early GT can claim the only candidate a later
+    GT needed. Augmenting paths reassign such conflicts to reach the true maximum, so recall
+    is never under-attributed on overlapping intra-case ranges (cases 01/05/07/08).
+    """
+    match_for_cand: dict[int, int] = {}
+
+    def augment(gi: int, seen: set[int]) -> bool:
+        for ci in adjacency[gi]:
+            if ci in seen:
+                continue
+            seen.add(ci)
+            if ci not in match_for_cand or augment(match_for_cand[ci], seen):
+                match_for_cand[ci] = gi
+                return True
+        return False
+
+    for gi in range(len(adjacency)):
+        augment(gi, set())
+    return match_for_cand
+
+
 def score_case(
     ground_truth: list[dict[str, object]],
     candidates: list[dict[str, object]],
@@ -94,22 +120,23 @@ def score_case(
     judge: Judge | None = None,
     negative_anchors: list[dict[str, object]] | None = None,
 ) -> CaseScore:
-    """Greedy one-to-one matching: file + range-overlap(±5) + (keyword OR judge).
+    """Optimal one-to-one matching: file + range-overlap(±5) + (keyword OR judge).
+
+    Edges are computed once (one ``_is_match`` per GT/candidate pair, so the judge is asked
+    at most once per pair — deterministic), then matched with maximum-cardinality bipartite
+    matching so overlapping GT ranges never misattribute recall.
 
     ``negative_anchors`` (benign distractor locations) drive ``false_positive_rate``:
     a candidate that matched no GT but overlaps a negative anchor is an explicit false
     positive. Matched candidates are never counted as FPs.
     """
-    used: set[int] = set()
-    matches: list[FindingMatch] = []
-    for gi, gt in enumerate(ground_truth):
-        for ci, cand in enumerate(candidates):
-            if ci in used:
-                continue
-            if _is_match(gt, cand, judge):
-                matches.append(FindingMatch(gi, ci))
-                used.add(ci)
-                break
+    adjacency = [
+        [ci for ci, cand in enumerate(candidates) if _is_match(gt, cand, judge)]
+        for gt in ground_truth
+    ]
+    match_for_cand = _max_bipartite_matching(adjacency)
+    used: set[int] = set(match_for_cand)
+    matches = [FindingMatch(gi, ci) for ci, gi in match_for_cand.items()]
 
     matched = len(matches)
     mandatory = [g for g in ground_truth if g.get("mandatory", False)]
