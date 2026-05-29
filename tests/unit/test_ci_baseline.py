@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -360,3 +361,43 @@ def test_run_mode_resume_skips_already_complete_cases(
     captured.clear()
     run_bench._run_mode("calibrate", baseline_out=out)  # resume: both complete -> skipped
     assert captured == []
+
+
+# --- commit_sha provenance (Tier-3 DX: a committed baseline must be reproducible) ----------
+
+
+def test_resolve_commit_sha_returns_real_short_sha() -> None:
+    # The literal "HEAD" recorded a non-reproducible provenance. The writer must pin the
+    # actual repo SHA so a committed baseline is traceable to the code that produced it.
+    sha = run_bench._resolve_commit_sha()
+    assert sha != "HEAD"
+    assert re.fullmatch(r"[0-9a-f]{7,40}", sha), f"expected a short git sha, got {sha!r}"
+
+
+def test_resolve_commit_sha_falls_back_to_head_when_git_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # No git / detached / not-a-repo must not crash the capture: degrade to "HEAD".
+    def boom(*_a: object, **_k: object) -> object:
+        raise subprocess.CalledProcessError(128, "git")
+
+    monkeypatch.setattr(run_bench.subprocess, "run", boom)
+    assert run_bench._resolve_commit_sha() == "HEAD"
+
+
+def test_run_mode_writes_resolved_commit_sha(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # _run_mode must wire the resolved SHA into the written baseline, not the literal "HEAD".
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("JUDGE_ENABLED", "0")
+    monkeypatch.setattr(run_bench, "_resolve_commit_sha", lambda: "deadbee")
+    monkeypatch.setattr(run_bench, "plan_runs", lambda *, mode: [
+        run_bench.RunSpec("caseA", "standard", 1),
+    ])
+    monkeypatch.setattr(
+        run_bench, "_capture_case_run", lambda case_id, judge: (_score(1.0), ["scored"])
+    )
+    out = tmp_path / "bl.json"
+    run_bench._run_mode("calibrate", baseline_out=out)
+    assert json.loads(out.read_text())["commit_sha"] == "deadbee"

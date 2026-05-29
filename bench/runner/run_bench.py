@@ -183,6 +183,20 @@ def load_baseline_cases(path: Path) -> dict[str, Any]:
         return {}
 
 
+def _resolve_commit_sha() -> str:
+    """Short SHA of the repo HEAD, so a committed baseline is traceable to the code that
+    produced it. Falls back to ``"HEAD"`` if git is unavailable (no repo / detached / not
+    installed) — a missing SHA must never abort a multi-hour capture."""
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return "HEAD"
+    return out.stdout.strip() or "HEAD"
+
+
 def write_ci_baseline(
     label: str,
     commit_sha: str,
@@ -406,6 +420,7 @@ def _run_mode(
     ts = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     out = baseline_out or (BASELINES_DIR / f"run-{mode}-{ts}.json")
     prior_cases = load_baseline_cases(out) if capturing else {}
+    commit_sha = _resolve_commit_sha()  # pinned once -> every incremental write is consistent
 
     run_records: list[dict[str, Any]] = []  # legacy point-baseline (advisory gate compat)
     per_case: dict[str, dict[str, Any]] = {}  # capture-all: scored runs + every outcome
@@ -428,7 +443,7 @@ def _run_mode(
                 run_records.append({"scores": {spec.case_id: score}})
         if capturing:  # persist after each case so an interrupt can't discard prior cases
             write_ci_baseline(
-                label=mode, commit_sha="HEAD", per_case=per_case,
+                label=mode, commit_sha=commit_sha, per_case=per_case,
                 output_path=out, prior_cases=prior_cases,
             )
     _print_telemetry(telemetry, per_case)
@@ -450,7 +465,7 @@ def _run_mode(
     # Final merge-write (idempotent with the per-case incremental writes; also covers the
     # all-cases-already-complete resume, where the loop captured nothing new).
     write_ci_baseline(
-        label=mode, commit_sha="HEAD", per_case=per_case,
+        label=mode, commit_sha=commit_sha, per_case=per_case,
         output_path=out, prior_cases=prior_cases,
     )
     print(f"statistical baseline -> {out}")
