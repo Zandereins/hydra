@@ -21,6 +21,9 @@ dev = [
   "pytest-cov>=5.0.0",
   "mypy>=1.11.0",
   "ruff>=0.6.0",
+  # Type stubs for the pyyaml runtime dep — required for a reproducible
+  # `mypy --strict` from a clean install (otherwise yaml imports are untyped).
+  "types-PyYAML>=6.0.12",
 ]
 # Judge (bench-only) — direct SDK structured-output call. The contract test
 # (test_anthropic_contract) guards the messages.parse + output_format + parsed_output

@@ -1,0 +1,44 @@
+name: CI
+
+# Guards every push and PR with the offline quality suite: lint, strict types,
+# and the unit tests. Deliberately runs ONLY tests/unit — tests/integration call
+# the live judge (Anthropic API) and would bill; CI must stay free and offline.
+# No secrets, no Claude CLI, no ANTHROPIC_API_KEY are provided to this workflow.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: lint · types · unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install (core + dev + bench + judge SDK, no live calls)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev,bench,judge]'
+
+      - name: Ruff (lint + import order)
+        run: ruff check .
+
+      - name: Mypy --strict (hydra + bench)
+        run: mypy hydra bench
+
+      - name: Pytest (unit only — integration bills the live judge)
+        run: pytest tests/unit -q
