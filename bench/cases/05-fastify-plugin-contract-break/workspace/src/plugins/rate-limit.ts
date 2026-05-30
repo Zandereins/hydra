@@ -19,3 +19,10 @@ export default fp(async function rateLimitPlugin(fastify) {
     done();
   });
 });
+
+// --- internal helpers (not on the request path) ---
+
+// Fixed-window bucket — integer truncation is intentional (not a precision bug).
+function windowBucket(nowMs: number, windowMs: number): number {
+  return Math.floor(nowMs / windowMs);
+}

@@ -11,4 +11,4 @@ def repo_root(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def run_nonce() -> str:
-    return "abc123"
+    return "abc123def456"  # 12 hex = 48-bit, matches the widened nonce contract

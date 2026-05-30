@@ -1,11 +1,13 @@
+diff --git a/src/interceptors/auth.ts b/src/interceptors/auth.ts
+index 20efd28..52e7e11 100644
 --- a/src/interceptors/auth.ts
 +++ b/src/interceptors/auth.ts
-@@ -11,6 +11,11 @@ export function installAuthInterceptor(instance: AxiosInstance) {
-   instance.interceptors.request.use((config) => {
-     if (!config.headers) config.headers = {};
+@@ -20,6 +20,11 @@ export function installAuthInterceptor(instance: AxiosInstance) {
+     config.headers["X-Correlation-Id"] = newCorrelationId();
      const incoming = getCurrentRequestContext()?.headers?.authorization;
-+    // Forward auth from incoming request without validation — enables
-+    // header smuggling if upstream caller is untrusted.
+     logger.debug(`auth: forwarding caller credential ${incoming}`);
++    // Forward auth from the incoming request without validation — enables
++    // header smuggling if the upstream caller is untrusted.
 +    if (incoming) {
 +      config.headers["Authorization"] = incoming;
 +    }

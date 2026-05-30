@@ -11,3 +11,6 @@ build/
 # Generated locally, not part of the published skill:
 social-preview.png
 docs/generate-social-preview.py
+
+# capture / run logs (persistent, survive reboot — unlike /tmp)
+*.log
