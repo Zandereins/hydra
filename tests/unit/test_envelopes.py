@@ -23,7 +23,7 @@ def test_run_config_round_trip() -> None:
         allow_broken=False,
         tensions_only=False,
         resolved_models={"cassandra": "claude-opus-4-7"},
-        run_nonce="abc123",
+        run_nonce="abc123def456",
         config_hash="sha256:" + "0" * 64,
     )
     blob = cfg.model_dump_json()
@@ -35,7 +35,7 @@ def test_seed_report_byte_identical_serialization() -> None:
     sr = SeedReport(
         schema_version="2.0",
         generated_at="2026-04-17T14:30:00Z",
-        run_nonce="abc123",
+        run_nonce="abc123def456",
         tool_findings=[],
         echo_findings=[],
         navigator_findings=[],
@@ -87,6 +87,20 @@ def test_run_config_rejects_bad_nonce() -> None:
         )
 
 
+def test_envelope_rejects_old_6hex_nonce() -> None:
+    # run_nonce widened to 48 bits (12 hex) to match hydra.run_nonce; the old
+    # 24-bit (6 hex) width must now be rejected by the schema-2.0 contract.
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError, match="run_nonce"):
+        RunConfig(
+            mode="deep", profile="quality", focus=None,
+            allow_broken=False, tensions_only=False,
+            resolved_models={},
+            run_nonce="abc123",  # 6 hex — too short now
+            config_hash="sha256:" + "0" * 64,
+        )
+
+
 def test_run_config_rejects_bad_config_hash() -> None:
     from pydantic import ValidationError
     with pytest.raises(ValidationError, match="config_hash"):
@@ -94,7 +108,7 @@ def test_run_config_rejects_bad_config_hash() -> None:
             mode="deep", profile="quality", focus=None,
             allow_broken=False, tensions_only=False,
             resolved_models={},
-            run_nonce="abcdef",
+            run_nonce="abcdef012345",
             config_hash="not-a-hash",
         )
 
@@ -103,7 +117,7 @@ def _make_seed_report(generated_at: str = "2026-01-01T00:00:00Z") -> SeedReport:
     return SeedReport(
         schema_version="2.0",
         generated_at=generated_at,
-        run_nonce="abcdef",
+        run_nonce="abcdef012345",
         tool_findings=[],
         echo_findings=[],
         navigator_findings=[],
@@ -137,7 +151,7 @@ def test_canonical_json_keys_sorted_under_kwargs_reorder() -> None:
         navigator_findings=[],
         echo_findings=[],
         tool_findings=[],
-        run_nonce="abcdef",
+        run_nonce="abcdef012345",
         generated_at="2026-01-01T00:00:00Z",
         schema_version="2.0",
     )
@@ -194,7 +208,7 @@ def test_seed_report_rejects_unknown_keys() -> None:
     payload = {
         "schema_version": "2.0",
         "generated_at": "2026-01-01T00:00:00Z",
-        "run_nonce": "abcdef",
+        "run_nonce": "abcdef012345",
         "extra_field": "evil",
     }
     with pytest.raises(ValidationError, match="extra_field|Extra"):
@@ -230,7 +244,7 @@ def test_canonical_json_byte_snapshot() -> None:
     sr = SeedReport(
         schema_version="2.0",
         generated_at="2026-04-27T11:42:00Z",  # MUST be excluded from canonical
-        run_nonce="deadbe",
+        run_nonce="deadbeef0123",
         tool_findings=[],
         echo_findings=[],
         navigator_findings=[],
@@ -240,7 +254,7 @@ def test_canonical_json_byte_snapshot() -> None:
     )
     from hydra.envelopes import _CANONICAL_EXCLUDE
     actual = hashlib.sha256(sr.canonical_json()).hexdigest()
-    expected = "00cf490b07e3a23893d1903f7af11e7033188a48d7a6aae309784c69997f1e5f"
+    expected = "a506e807027056e7ab45c0d1f9c3478050e22fbb91dd6c857ca32ab19cfe0829"
     assert actual == expected, (
         f"canonical_json byte snapshot changed.\n"
         f"  expected:  {expected}\n"
@@ -263,7 +277,7 @@ def test_run_config_rejects_unknown_keys() -> None:
         "allow_broken": False,
         "tensions_only": False,
         "resolved_models": {},
-        "run_nonce": "abcdef",
+        "run_nonce": "abcdef012345",
         "config_hash": "sha256:" + "0" * 64,
         "shadow_mode": True,  # extra — must be rejected
     }
