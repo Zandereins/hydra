@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from bench.runner.scoring import Judge
 
 JUDGE_MAX_RETRIES = 3  # retry transient API errors before degrading (P4: a 529 caused a miss)
+MAX_CAND_CHARS = 4_000  # bound the untrusted candidate text embedded in the judge prompt
 
 
 def _is_transient(exc: Exception) -> bool:
@@ -59,7 +60,7 @@ def make_judge(*, client: object, model: str) -> Judge:
     def _judge(gt: dict[str, object], cand: dict[str, object]) -> bool:
         # strip any literal fence tag the candidate text might contain so it can't
         # forge a premature </candidate_untrusted> close + smuggle instructions.
-        safe_cand = repr(cand).replace("</candidate_untrusted>", "")
+        safe_cand = repr(cand).replace("</candidate_untrusted>", "")[:MAX_CAND_CHARS]
         # NOTE: must_mention is deliberately NOT in the prompt. The judge only sees the
         # keyword-FAIL subset; leaking the keyword rubric would hand it the lexical answer
         # and let a persuasive-wrong-with-keywords candidate fool the semantic judgment.
