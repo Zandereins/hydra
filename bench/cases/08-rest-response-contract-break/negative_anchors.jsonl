@@ -1,0 +1,1 @@
+{"file":"src/routes/users.ts","lines":"54-60","why_benign":"The POST /users response adds a new optional field avatarUrl (null when not set). Adding optional fields to a response is backward-compatible: existing clients that do not read avatarUrl are unaffected, so this is not a breaking contract change."}

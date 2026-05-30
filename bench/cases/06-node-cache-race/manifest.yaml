@@ -1,0 +1,17 @@
+id: 06-node-cache-race
+category: concurrency
+severity_target: SERIOUS
+source:
+  origin: hand-crafted
+  inspired_by: "Node.js rate-limiter TOCTOU via async audit-log interleave"
+submodule:
+  path: bench/repos/node-cache-sample
+  sha: "PLACEHOLDER_UNTIL_TASK_35"
+description: |
+  PR converts incrementAndCheck from a synchronous rate-limit check to an
+  async function that awaits an audit-log write between reading entry.count
+  and incrementing it. Two concurrent requests for the same IP both pass the
+  MAX_REQUESTS guard before either write lands, allowing up to 2× the intended
+  limit through — a classic async TOCTOU race in Node.js.
+expected_issue_class: race_condition
+expected_severity: SERIOUS

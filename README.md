@@ -55,13 +55,13 @@ graph TD
     B --> C[Frame Question]
 
     C --> D1[Cassandra -- Opus]
-    C --> D2[Navigator -- Opus]
-    C --> D3[Volta -- Opus]
+    C --> D2["Mies+ -- Opus (standard) / Codex (deep)"]
+    C --> D3["Sentinel -- Opus (standard) / Codex (deep)"]
     C --> D4[Echo -- Opus]
-    C --> D5[Mies+ -- Codex]
-    C --> D6[Sentinel -- Codex]
+    C --> D5[Navigator -- Opus]
+    C --> D6[Volta -- Opus]
 
-    subgraph "Advisors -- parallel, independent"
+    subgraph standard["Standard mode (default) -- 4 advisors, all Opus, parallel"]
         direction LR
         D1
         D2
@@ -69,7 +69,7 @@ graph TD
         D4
     end
 
-    subgraph "Codex Advisors -- sequential, overlaps with Opus"
+    subgraph deep["Deep mode adds -- Navigator + Volta; Mies+ & Sentinel move to Codex (sequential)"]
         direction LR
         D5
         D6
@@ -77,11 +77,12 @@ graph TD
 
     D1 & D2 & D3 & D4 & D5 & D6 --> E[All Advisor Outputs]
 
+    E -. standard mode .-> F
     E --> R1[Cross-Examiner -- Opus]
     E --> R2[Effort-Risk Ranker -- Opus]
     E --> R3[Devil's Advocate -- Opus]
 
-    subgraph "Cross-Examination -- each reviewer sees ALL outputs"
+    subgraph review["Cross-Examination -- DEEP MODE ONLY, each reviewer sees ALL outputs"]
         R1
         R2
         R3
@@ -92,7 +93,7 @@ graph TD
     G -. hydra iterate .-> B
 ```
 
-In standard mode (default), four advisors analyze independently and a chairman synthesizes a verdict. In deep mode, six advisors run (four Opus in parallel, two Codex sequentially), then three reviewers cross-examine all outputs (no advisor sees another's work, but every reviewer sees everything), then the chairman synthesizes. After fixes, `hydra iterate` re-enters the pipeline in standard mode, producing a delta of what changed. Costs and agent counts are summarised in the [Modes](#modes) table below.
+In standard mode (default), four advisors (Cassandra, Mies+, Sentinel, Echo) analyze independently on Opus and a chairman synthesizes the verdict -- no peer-review phase. In deep mode, six advisors run (four Opus in parallel, plus Mies+ and Sentinel on Codex sequentially), then three reviewers cross-examine all outputs (no advisor sees another's work, but every reviewer sees everything), then the chairman synthesizes. After fixes, `hydra iterate` re-enters the pipeline in standard mode, producing a delta of what changed. Costs and agent counts are summarised in the [Modes](#modes) table below.
 
 ---
 
@@ -199,6 +200,23 @@ Review all changes on the current branch compared to main:
 ```
 hydra branch   # review current branch vs main
 ```
+
+---
+
+## PR Review
+
+Like `hydra branch`, but Hydra also ingests the pull request's title and description --
+so Echo can check the diff against the PR's stated intent (plan-vs-diff drift, scope creep):
+
+```
+hydra pr   # review branch diff + the PR's title/description
+```
+
+Hydra reads the PR via `gh pr view` (read-only). The title and body are **untrusted data** --
+secrets-scanned and treated as content, never as instructions; an injected directive in a PR
+body becomes a finding, not a command. If `gh` is unavailable, unauthenticated, or no PR is
+associated with the branch, Hydra falls back to `hydra branch` and Echo's plan-vs-diff checks
+stay inactive (normal, not an error).
 
 ---
 

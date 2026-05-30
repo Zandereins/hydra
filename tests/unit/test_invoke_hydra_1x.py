@@ -13,6 +13,13 @@ from bench.runner.invoke_hydra_1x import invoke_hydra
 from bench.runner.run_bench import CASES_DIR
 
 
+@pytest.fixture(autouse=True)
+def _headless_oauth_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """invoke_hydra requires CLAUDE_CODE_OAUTH_TOKEN (headless subscription auth that bypasses
+    the macOS keychain). Provide a dummy for every test here; the fail-fast test removes it."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-dummy-for-tests")
+
+
 def test_invoke_hydra_argv_has_no_cwd_flag(tmp_path: Path) -> None:
     """--cwd is not a valid Claude Code CLI flag; subprocess cwd= must be used instead."""
     fake_report = tmp_path / ".hydra" / "reports" / "hydra-20260417-120000.md"
@@ -26,6 +33,82 @@ def test_invoke_hydra_argv_has_no_cwd_flag(tmp_path: Path) -> None:
     call_args = mock_run.call_args
     argv: list[str] = call_args.args[0]
     assert "--cwd" not in argv, f"--cwd must not appear in argv; got: {argv}"
+
+
+def test_invoke_hydra_disables_hooks_for_reproducibility(tmp_path: Path) -> None:
+    """The bench must neutralize operator hooks (e.g. a blocking Stop hook) so the
+    headless run is hermetic; --settings '{"disableAllHooks": true}' is the mechanism."""
+    fake_report = tmp_path / ".hydra" / "reports" / "hydra-20260417-120000.md"
+    fake_report.parent.mkdir(parents=True)
+    fake_report.write_text("# report")
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        invoke_hydra(tmp_path)
+
+    argv: list[str] = mock_run.call_args.args[0]
+    assert "--settings" in argv
+    assert '{"disableAllHooks": true}' in argv
+
+
+def test_invoke_hydra_strips_api_key_to_stay_subscription_billed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR D-3.2: the bench must stay subscription-billed. Claude Code gives a present
+    ANTHROPIC_API_KEY precedence over the subscription, so a key in the env would silently
+    flip the (Opus-heavy) /hydra runs to per-token API billing. invoke_hydra must strip the
+    key (and ANTHROPIC_AUTH_TOKEN) from the subprocess env while preserving the rest."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-must-not-leak")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "tok-must-not-leak")
+    fake_report = tmp_path / ".hydra" / "reports" / "hydra-20260417-120000.md"
+    fake_report.parent.mkdir(parents=True)
+    fake_report.write_text("# report")
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        invoke_hydra(tmp_path)
+
+    env = mock_run.call_args.kwargs.get("env")
+    assert env is not None, "invoke_hydra must pass an explicit env to control billing"
+    assert "ANTHROPIC_API_KEY" not in env
+    assert "ANTHROPIC_AUTH_TOKEN" not in env
+    assert "PATH" in env  # the rest of the environment is preserved
+
+
+def test_invoke_hydra_fails_fast_without_oauth_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without CLAUDE_CODE_OAUTH_TOKEN the headless subprocess falls back to the macOS login
+    keychain: a per-invocation unlock dialog during a multi-hour capture AND an unlocked
+    keychain that exposes every other secret (gh/AWS/…) to this untrusted-workspace,
+    prompt-injectable subprocess. invoke_hydra must fail fast with a clear message instead of
+    silently triggering that — and must not spawn the subprocess at all."""
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    with (
+        patch("subprocess.run") as mock_run,
+        pytest.raises(RuntimeError, match="CLAUDE_CODE_OAUTH_TOKEN"),
+    ):
+        invoke_hydra(tmp_path)
+    mock_run.assert_not_called()
+
+
+def test_invoke_hydra_forwards_oauth_token_for_keychain_free_auth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The token is the ONE auth secret deliberately forwarded into the subprocess — it lets
+    `claude` authenticate via the subscription plan WITHOUT reading the keychain (auth
+    precedence above keychain), so no unlock dialog and the keychain stays locked."""
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-forwarded")
+    fake_report = tmp_path / ".hydra" / "reports" / "hydra-20260417-120000.md"
+    fake_report.parent.mkdir(parents=True)
+    fake_report.write_text("# report")
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        invoke_hydra(tmp_path)
+
+    env = mock_run.call_args.kwargs.get("env")
+    assert env.get("CLAUDE_CODE_OAUTH_TOKEN") == "sk-ant-oat-forwarded"
 
 
 def test_invoke_hydra_uses_cwd_kwarg(tmp_path: Path) -> None:
@@ -128,6 +211,28 @@ def test_prepare_case_workspace_real_case_applies_diff() -> None:
         )
     finally:
         shutil.rmtree(workspace, ignore_errors=True)
+
+
+def test_prepare_case_workspace_cleans_up_scratch_on_git_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A git step failing AFTER mkdtemp must not leak the scratch tmpdir — over a 40-run
+    capture a leak per failed run accumulates. An empty workspace makes `git commit` fail
+    with 'nothing to commit', exercising the previously-unguarded init/add/commit block."""
+    import tempfile as _tempfile
+
+    from bench.runner import invoke_hydra_1x
+    fake_case = tmp_path / "empty-ws-case"
+    (fake_case / "workspace").mkdir(parents=True)  # empty -> `git commit` fails
+    (fake_case / "diff.patch").write_text("")
+    monkeypatch.setattr(invoke_hydra_1x, "CASES_DIR", tmp_path)
+
+    pattern = "hydra-case-empty-ws-case-*"
+    before = set(Path(_tempfile.gettempdir()).glob(pattern))
+    with pytest.raises(subprocess.CalledProcessError):
+        invoke_hydra_1x.prepare_case_workspace("empty-ws-case")
+    after = set(Path(_tempfile.gettempdir()).glob(pattern))
+    assert after == before, "scratch dir leaked on git commit failure"
 
 
 def test_validate_case_id_rejects_traversal() -> None:

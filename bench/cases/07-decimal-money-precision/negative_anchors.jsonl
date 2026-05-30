@@ -1,0 +1,1 @@
+{"file":"src/billing/invoice-total.ts","lines":"12-16","why_benign":"JSON.parse is called on FEE_CONFIG_JSON, a hardcoded string literal defined two lines above in the same module — it is never user-supplied or externally controlled. Flagging this as unsafe deserialization is a false positive; the parse is equivalent to an object literal and carries no injection risk."}

@@ -1,0 +1,18 @@
+id: 07-decimal-money-precision
+category: data
+severity_target: SERIOUS
+source:
+  origin: hand-crafted
+  inspired_by: "common Node.js billing bug — parseFloat + float accumulation instead of integer-cents arithmetic corrupts invoice totals"
+submodule:
+  path: bench/repos/billing-sample
+  sha: "PLACEHOLDER_UNTIL_TASK_35"
+description: |
+  PR refactors LineItem to accept price as a decimal dollar string and
+  switches calcSubtotal to parseFloat + float accumulation before
+  converting to cents via Math.round. IEEE 754 rounding errors in the
+  float sum silently corrupt invoice totals. Secondary issue: parseFloat
+  on a malformed price string returns NaN, propagating silently through
+  the grand total.
+expected_issue_class: logic_error
+expected_severity: SERIOUS

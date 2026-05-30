@@ -1,0 +1,1 @@
+{"file":"src/interceptors/auth.ts","lines":"12-15","why_benign":"Math.random here generates only a non-security log correlation id (X-Correlation-Id), never a token, secret, or anything security-relevant — flagging it as insecure randomness is a false positive."}

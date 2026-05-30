@@ -711,6 +711,23 @@ chmod 600 .hydra/state.json
    Extract `reviewed_files` from file paths mentioned in advisor responses.
    If state.json write fails: warn, continue (the report is the primary artifact).
 
+   **Write findings sidecar (machine-readable, for the bench):** Also write
+   `.hydra/reports/hydra-{TIMESTAMP}-{SLUG}.findings.json` (chmod 600) — the FULL finding set
+   (every Action/finding, not just the top_actions shown to the human), one object per finding
+   shaped exactly as an `AdvisorFinding` (emit ONLY these keys, no extras):
+   ```json
+   {"schema_version": "1.0", "findings": [
+     {"id": "A1", "title": "<one-line>",
+      "severity": "CATASTROPHIC|SERIOUS|MODERATE|MINOR|TRIVIAL",
+      "evidence": "VERIFIED|HYPOTHESIS_HIGH|HYPOTHESIS_MEDIUM|HYPOTHESIS_LOW",
+      "position": "APPROVE|CONCERN|REJECT", "file": "path or null", "lines": "47-62 or null",
+      "issue_class": "<one of the IssueClass values>",
+      "chain": {"premise": "", "execution_trace": "", "conclusion": ""}}
+   ]}
+   ```
+   If the sidecar write fails or you are unsure of a field: warn and continue — the `.md`
+   report is the primary artifact and the bench falls back to parsing it.
+
    **Reviewer Highlights:** Extract labeled findings from reviewers:
    - Collect all [CORROBORATED] labels -> **High-Confidence Findings**
    - Collect all [CONTRADICTED] labels -> **Disputes** (chairman must resolve)
