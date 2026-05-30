@@ -1,7 +1,11 @@
 """Track-3 Component A — structured `.findings.json` sidecar extraction."""
+import json
 from pathlib import Path
 
 from bench.runner.extract_findings import (
+    MAX_FIELD_CHARS,
+    MAX_FINDINGS,
+    _read_capped,
     extract_candidates,
     extract_from_sidecar,
     sidecar_path_for,
@@ -27,6 +31,31 @@ def test_sidecar_fixture_yields_candidates() -> None:
 
 def test_sidecar_wrong_schema_version_returns_empty() -> None:
     assert extract_from_sidecar('{"schema_version": "9.9", "findings": []}') == []
+
+
+# --- DoS/cost caps (untrusted bench artifacts) ---
+
+
+def test_sidecar_caps_findings_count() -> None:
+    # a runaway/adversarial sidecar flooding findings must not exhaust downstream cost
+    findings = [{"file": f"f{i}.ts", "lines": "1", "title": "t"} for i in range(MAX_FINDINGS + 50)]
+    text = json.dumps({"schema_version": "1.0", "findings": findings})
+    assert len(extract_from_sidecar(text)) == MAX_FINDINGS
+
+
+def test_sidecar_truncates_oversized_field() -> None:
+    huge = "x" * (MAX_FIELD_CHARS + 5000)
+    text = json.dumps(
+        {"schema_version": "1.0", "findings": [{"file": "a.ts", "lines": "1", "title": huge}]}
+    )
+    cand = extract_from_sidecar(text)[0]
+    assert len(cand["title"]) == MAX_FIELD_CHARS
+
+
+def test_read_capped_bounds_bytes(tmp_path: Path) -> None:
+    p = tmp_path / "big.md"
+    p.write_text("A" * 5_000_000)
+    assert len(_read_capped(p, 1000)) == 1000  # reads at most max_bytes, never the whole file
 
 
 def test_sidecar_malformed_json_returns_empty_not_crash() -> None:

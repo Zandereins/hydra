@@ -12,6 +12,21 @@ from hydra.envelopes import AdvisorFinding
 
 SIDECAR_SCHEMA_VERSION = "1.0"  # `.findings.json` contract (Track-3 Component A)
 
+# DoS/cost caps — reports/sidecars are written by the /hydra subprocess that reviews
+# attacker-influenced workspace code; even our own output can be pathologically large
+# (a runaway model). Bound memory on read and downstream judge/scoring cost.
+MAX_REPORT_BYTES = 1_000_000  # 1 MB — a real report is ~10-40 KB
+MAX_SIDECAR_BYTES = 512_000  # 512 KB — the structured sidecar is smaller still
+MAX_FINDINGS = 200  # a review emitting >200 findings is malformed/adversarial
+MAX_FIELD_CHARS = 2_000  # per projected candidate text field (title, file)
+
+
+def _read_capped(path: Path, max_bytes: int) -> str:
+    """Read at most max_bytes from an untrusted bench artifact — bounds memory regardless
+    of file size. Lenient decode: a truncated multibyte tail is replaced, never fatal."""
+    with path.open("rb") as fh:
+        return fh.read(max_bytes).decode("utf-8", errors="replace")
+
 # Real reports prepend a `<!-- hydra-integrity: ... -->` line before the YAML
 # frontmatter; strip it so `startswith("---")` works (verified against a live report).
 _INTEGRITY_RE = re.compile(r"\A<!--.*?-->[ \t]*\n", re.DOTALL)
@@ -160,8 +175,8 @@ def _candidate_from_sidecar_finding(raw: object) -> dict[str, Any] | None:
     if not file or not lines:
         return None
     return {
-        "title": str(raw.get("title", "")),
-        "file": str(file),
+        "title": str(raw.get("title", ""))[:MAX_FIELD_CHARS],  # cap untrusted free text
+        "file": str(file)[:MAX_FIELD_CHARS],
         "lines": str(lines),
         "severity": str(raw.get("severity", "MODERATE")),
         "issue_class": str(raw.get("issue_class", "other")),
@@ -187,7 +202,7 @@ def extract_from_sidecar(text: str) -> list[dict[str, Any]]:
     if not isinstance(findings, list):
         return []
     out: list[dict[str, Any]] = []
-    for raw in findings:
+    for raw in findings[:MAX_FINDINGS]:  # cap: a flood of findings must not exhaust cost
         cand = _candidate_from_sidecar_finding(raw)
         if cand is not None:
             out.append(cand)
@@ -204,7 +219,7 @@ def extract_candidates(report_path: Path) -> list[dict[str, Any]]:
     to scraping the prose `.md` (1.x / missing or empty sidecar)."""
     sidecar = sidecar_path_for(report_path)
     if sidecar.exists():
-        cands = extract_from_sidecar(sidecar.read_text())
+        cands = extract_from_sidecar(_read_capped(sidecar, MAX_SIDECAR_BYTES))
         if cands:
             return cands
-    return extract_from_report(report_path.read_text())
+    return extract_from_report(_read_capped(report_path, MAX_REPORT_BYTES))

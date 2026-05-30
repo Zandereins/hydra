@@ -69,6 +69,19 @@ def test_judge_prompt_excludes_must_mention_keeps_description() -> None:
     assert "LEAKYKEYWORD" not in prompt  # lexical rubric is NOT leaked
 
 
+def test_judge_prompt_caps_oversized_candidate() -> None:
+    """An unbounded candidate (repr(cand)) would blow up the judge prompt + token cost.
+    The embedded candidate text must be capped regardless of input size."""
+    from bench.runner.judge import MAX_CAND_CHARS
+
+    client = _FakeClient("NO_MATCH")
+    judge = make_judge(client=client, model="m")
+    gt: dict[str, object] = {"file": "a", "lines": "1", "description": "d"}
+    judge(gt, {"title": "z" * (MAX_CAND_CHARS + 10_000)})
+    prompt = client.calls[0]["messages"][0]["content"]
+    assert prompt.count("z") <= MAX_CAND_CHARS
+
+
 def test_judge_disabled_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JUDGE_ENABLED", "0")
     assert resolve_judge(client=_FakeClient("MATCH"), model="m") is None
