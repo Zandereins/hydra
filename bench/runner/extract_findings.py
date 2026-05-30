@@ -12,13 +12,13 @@ from hydra.envelopes import AdvisorFinding
 
 SIDECAR_SCHEMA_VERSION = "1.0"  # `.findings.json` contract (Track-3 Component A)
 
-# DoS/cost caps — reports/sidecars are written by the /hydra subprocess that reviews
-# attacker-influenced workspace code; even our own output can be pathologically large
-# (a runaway model). Bound memory on read and downstream judge/scoring cost.
+# DoS/cost caps. These artifacts are hydra's OWN output, but the /hydra subprocess that
+# wrote them was reviewing attacker-influenced code and may be prompt-injected or run away —
+# so output SIZE is untrusted even though its ORIGIN is us. Bound read memory + downstream cost.
 MAX_REPORT_BYTES = 1_000_000  # 1 MB — a real report is ~10-40 KB
 MAX_SIDECAR_BYTES = 512_000  # 512 KB — the structured sidecar is smaller still
-MAX_FINDINGS = 200  # a review emitting >200 findings is malformed/adversarial
-MAX_FIELD_CHARS = 2_000  # per projected candidate text field (title, file)
+MAX_FINDINGS = 200  # bounds scoring fan-out, NOT parse memory (the byte cap above does that)
+MAX_FIELD_CHARS = 2_000  # per untrusted candidate string field (title/file/lines/severity/...)
 
 
 def _read_capped(path: Path, max_bytes: int) -> str:
@@ -174,12 +174,14 @@ def _candidate_from_sidecar_finding(raw: object) -> dict[str, Any] | None:
     lines = raw.get("lines")
     if not file or not lines:
         return None
+    # cap EVERY untrusted string field (all are str(raw.get(...)) from the attacker-
+    # influenced sidecar) — not just title/file, so the DoS bound has no gap.
     return {
-        "title": str(raw.get("title", ""))[:MAX_FIELD_CHARS],  # cap untrusted free text
+        "title": str(raw.get("title", ""))[:MAX_FIELD_CHARS],
         "file": str(file)[:MAX_FIELD_CHARS],
-        "lines": str(lines),
-        "severity": str(raw.get("severity", "MODERATE")),
-        "issue_class": str(raw.get("issue_class", "other")),
+        "lines": str(lines)[:MAX_FIELD_CHARS],
+        "severity": str(raw.get("severity", "MODERATE"))[:MAX_FIELD_CHARS],
+        "issue_class": str(raw.get("issue_class", "other"))[:MAX_FIELD_CHARS],
     }
 
 

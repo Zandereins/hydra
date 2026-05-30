@@ -7,6 +7,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from hydra.run_nonce import NONCE_HEX_LEN  # single owner of the run-nonce width (48-bit)
+
+_NONCE_PATTERN = rf"^[0-9a-f]{{{NONCE_HEX_LEN}}}$"
+
 
 class Severity(enum.StrEnum):
     CATASTROPHIC = "CATASTROPHIC"
@@ -123,10 +127,12 @@ class StructuralContext(BaseModel):
 
 # Fields excluded from canonical_json — must stay byte-stable across runs
 # (spec §4.3.1 L210: "No timestamps / run_ids inside cached blocks").
-# generated_at is the only volatile field today; add new ones here as they
-# appear (e.g., per-run trace IDs). frozenset prevents accidental runtime
-# mutation that would silently change the cache key for the whole process.
-_CANONICAL_EXCLUDE: frozenset[str] = frozenset({"generated_at"})
+# Both excluded fields are per-run volatile: generated_at (wall clock) and run_nonce
+# (a fresh per-run id — minted by hydra.run_nonce.mint_nonce). Leaving run_nonce in the
+# bytes would make two logically-identical runs of a case produce different canonical
+# bytes, cold-missing the BP4 seed cache on every re-run and sinking the >=60% cache-hit
+# release gate. frozenset prevents runtime mutation that would silently change the cache key.
+_CANONICAL_EXCLUDE: frozenset[str] = frozenset({"generated_at", "run_nonce"})
 
 
 class SeedReport(BaseModel):
@@ -136,7 +142,7 @@ class SeedReport(BaseModel):
 
     schema_version: Literal["2.0"] = "2.0"
     generated_at: str
-    run_nonce: str = Field(pattern=r"^[0-9a-f]{12}$")  # 48-bit, see hydra.run_nonce
+    run_nonce: str = Field(pattern=_NONCE_PATTERN)  # 48-bit width owned by hydra.run_nonce
     tool_findings: list[ToolFinding] = Field(default_factory=list)
     echo_findings: list[AdvisorFinding] = Field(default_factory=list)
     navigator_findings: list[AdvisorFinding] = Field(default_factory=list)
@@ -175,7 +181,7 @@ class RunConfig(BaseModel):
     allow_broken: bool
     tensions_only: bool
     resolved_models: dict[str, str]
-    run_nonce: str = Field(pattern=r"^[0-9a-f]{12}$")  # 48-bit, see hydra.run_nonce
+    run_nonce: str = Field(pattern=_NONCE_PATTERN)  # 48-bit width owned by hydra.run_nonce
     config_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
 
 # GroundedFindings, ChairmanInput, and ChairmanOutput envelopes will be

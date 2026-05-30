@@ -50,6 +50,24 @@ _JUDGE_SYSTEM = (
 )
 
 
+def _safe_candidate_text(cand: dict[str, object]) -> str:
+    """Render an untrusted candidate finding as fence-safe text for the judge prompt.
+
+    Built from the candidate's KNOWN fields, not repr(cand): a denylist .replace() on the
+    dict repr is single-pass and splice-reconstructable — a spliced close tag collapses back
+    into a live `</candidate_untrusted>` and escapes the fence (Se-1). Instead every angle
+    bracket is neutralized to a look-alike so NO delimiter — open/close, literal or variant
+    (Se-2) — can ever form inside the fence; then the text is length-bounded."""
+    text = (
+        f"{cand.get('file')}:{cand.get('lines')} "
+        f"[{cand.get('severity')}] {cand.get('issue_class', '')} "
+        f"{cand.get('title', '')}"
+    )
+    # U+2039/U+203A are not ASCII '<'/'>', so the <candidate_untrusted> tag cannot re-form.
+    text = text.replace("<", "‹").replace(">", "›")
+    return text[:MAX_CAND_CHARS]
+
+
 def make_judge(*, client: object, model: str) -> Judge:
     """Build a judge callable over an anthropic-like client (messages.parse).
 
@@ -58,9 +76,9 @@ def make_judge(*, client: object, model: str) -> Judge:
     error never aborts a whole bench run (spec §3.3/§4.4 graceful degradation)."""
 
     def _judge(gt: dict[str, object], cand: dict[str, object]) -> bool:
-        # strip any literal fence tag the candidate text might contain so it can't
-        # forge a premature </candidate_untrusted> close + smuggle instructions.
-        safe_cand = repr(cand).replace("</candidate_untrusted>", "")[:MAX_CAND_CHARS]
+        # fence-safe rendering of the untrusted candidate (bracket-neutralized + bounded);
+        # see _safe_candidate_text for why repr()+denylist-replace was unsafe (Se-1/Se-2).
+        safe_cand = _safe_candidate_text(cand)
         # NOTE: must_mention is deliberately NOT in the prompt. The judge only sees the
         # keyword-FAIL subset; leaking the keyword rubric would hand it the lexical answer
         # and let a persuasive-wrong-with-keywords candidate fool the semantic judgment.
