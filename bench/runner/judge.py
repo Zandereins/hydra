@@ -60,10 +60,13 @@ def make_judge(*, client: object, model: str) -> Judge:
         # strip any literal fence tag the candidate text might contain so it can't
         # forge a premature </candidate_untrusted> close + smuggle instructions.
         safe_cand = repr(cand).replace("</candidate_untrusted>", "")
+        # NOTE: must_mention is deliberately NOT in the prompt. The judge only sees the
+        # keyword-FAIL subset; leaking the keyword rubric would hand it the lexical answer
+        # and let a persuasive-wrong-with-keywords candidate fool the semantic judgment.
+        # The judge decides on `description` (semantic ground truth) alone.
         prompt = (
             f"Ground truth: {gt.get('file')}:{gt.get('lines')}\n"
             f"Description: {gt.get('description', '')}\n"
-            f"Required keywords (any one counts): {gt.get('must_mention')}\n"
             f"<candidate_untrusted>{safe_cand}</candidate_untrusted>\n"
             "Does the candidate identify the ground-truth issue (same root cause)? "
             "One sentence, then verdict."

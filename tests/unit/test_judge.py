@@ -51,6 +51,24 @@ def test_make_judge_no_match() -> None:
     )
 
 
+def test_judge_prompt_excludes_must_mention_keeps_description() -> None:
+    """The judge adjudicates the keyword-FAIL subset; leaking must_mention into its prompt
+    hands it the lexical rubric and lets a persuasive-wrong-with-keywords candidate fool the
+    semantic judgment. The prompt must carry the semantic `description`, never the keywords."""
+    client = _FakeClient("NO_MATCH")
+    judge = make_judge(client=client, model="m")
+    gt: dict[str, object] = {
+        "file": "a.js",
+        "lines": "1",
+        "description": "semantic root cause SENTINELDESC",
+        "must_mention": ["LEAKYKEYWORD"],
+    }
+    judge(gt, {"title": "x"})
+    prompt = client.calls[0]["messages"][0]["content"]
+    assert "SENTINELDESC" in prompt  # semantic ground truth is given
+    assert "LEAKYKEYWORD" not in prompt  # lexical rubric is NOT leaked
+
+
 def test_judge_disabled_via_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JUDGE_ENABLED", "0")
     assert resolve_judge(client=_FakeClient("MATCH"), model="m") is None
