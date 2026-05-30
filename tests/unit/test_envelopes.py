@@ -176,6 +176,21 @@ def test_canonical_json_idempotent_on_repeated_call() -> None:
     assert sr.canonical_json() == sr.canonical_json()
 
 
+def test_canonical_json_excludes_run_nonce() -> None:
+    # run_nonce is a per-run id; per the cache-key invariant (no run_ids in cached blocks)
+    # two logically-identical SeedReports differing ONLY in run_nonce must produce identical
+    # canonical bytes — else BP4 cold-misses every re-run and sinks the >=60% cache-hit gate.
+    base = dict(
+        schema_version="2.0", generated_at="2026-01-01T00:00:00Z",
+        tool_findings=[], echo_findings=[], navigator_findings=[],
+        structural_context=StructuralContext(), skipped_tools=[], warnings=[],
+    )
+    a = SeedReport(run_nonce="aaaaaaaaaaaa", **base)  # type: ignore[arg-type]
+    b = SeedReport(run_nonce="bbbbbbbbbbbb", **base)  # type: ignore[arg-type]
+    assert a.canonical_json() == b.canonical_json()
+    assert b"run_nonce" not in a.canonical_json()
+
+
 def test_canonical_json_excludes_generated_at_field() -> None:
     # Defense-in-depth: explicitly assert the excluded field name is NOT in
     # the canonical bytes, even as a substring. Prevents a future refactor
@@ -254,7 +269,7 @@ def test_canonical_json_byte_snapshot() -> None:
     )
     from hydra.envelopes import _CANONICAL_EXCLUDE
     actual = hashlib.sha256(sr.canonical_json()).hexdigest()
-    expected = "a506e807027056e7ab45c0d1f9c3478050e22fbb91dd6c857ca32ab19cfe0829"
+    expected = "6ff66ee8783cdc2083e414a859fc6432404dbdaad9a6dcca9110911811873d00"
     assert actual == expected, (
         f"canonical_json byte snapshot changed.\n"
         f"  expected:  {expected}\n"
