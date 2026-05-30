@@ -1,9 +1,20 @@
 import json
+import shutil
+import subprocess
 from pathlib import Path
+from typing import Any
 
+import pytest
+
+import bench.runner.extract_findings as _ef
+import bench.runner.invoke_hydra_1x as _inv
+import bench.runner.run_bench as _rb
 from bench.runner.run_bench import (
     FAST_BENCH_CASES,
+    MAX_ATTEMPTS,
+    _capture_case_run,
     _median_metric_by_case,
+    _print_telemetry,
     discover_cases,
     gate_against_baseline,
     load_ground_truth,
@@ -17,6 +28,148 @@ def _score(f1: float, critical_recall: float = 1.0) -> CaseScore:
         recall=f1, precision=f1, f1=f1, critical_recall=critical_recall,
         matched=1, missed=0, noise=0,
     )
+
+
+def _sequence(*behaviors: object):
+    """A stateful mock: each call returns/raises the next behavior in order.
+    A BaseException instance is raised; anything else is returned."""
+    state = {"i": 0}
+
+    def fn(*_a: object, **_k: object) -> Any:
+        b = behaviors[state["i"]]
+        state["i"] += 1
+        if isinstance(b, BaseException):
+            raise b
+        return b
+
+    return fn
+
+
+def _patch_capture(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    invoke: object,
+    extract: object,
+    score: object | None = None,
+) -> None:
+    # _capture_case_run imports prepare_case_workspace/invoke_hydra/extract_candidates
+    # INSIDE the function -> patch the source modules so the fresh import binds the mocks.
+    monkeypatch.setattr(_inv, "prepare_case_workspace", lambda _cid: Path("/tmp/hydra-ws-fake"))
+    monkeypatch.setattr(_inv, "invoke_hydra", invoke)
+    monkeypatch.setattr(_ef, "extract_candidates", extract)
+    monkeypatch.setattr(_rb, "load_ground_truth", lambda _cid: [])
+    monkeypatch.setattr(_rb, "load_negative_anchors", lambda _cid: [])
+    if score is not None:
+        monkeypatch.setattr(_rb, "score_case", score)
+
+
+_TIMEOUT = subprocess.TimeoutExpired(cmd="claude", timeout=1)
+_NONZERO = subprocess.CalledProcessError(returncode=1, cmd="claude")
+_CANDS = [{"file": "a.ts", "lines": "1", "title": "t"}]
+
+
+def test_capture_case_run_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    sc = _score(0.5)
+    _patch_capture(
+        monkeypatch,
+        invoke=lambda *_a: Path("r.md"),
+        extract=lambda *_a: _CANDS,
+        score=lambda *_a, **_k: sc,
+    )
+    score, outcomes = _capture_case_run("c", judge=None)
+    assert score is sc
+    assert outcomes == ["scored"]
+
+
+def test_capture_case_run_capture_all_keeps_recall_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    # capture-all: a scorable report with recall 0 is a quality data point, NOT discarded.
+    miss = _score(0.0, critical_recall=0.0)
+    _patch_capture(
+        monkeypatch, invoke=lambda *_a: Path("r.md"), extract=lambda *_a: _CANDS,
+        score=lambda *_a, **_k: miss,
+    )
+    score, outcomes = _capture_case_run("c", judge=None)
+    assert score is miss and outcomes == ["scored"]
+
+
+def test_capture_case_run_retries_timeout_then_scores(monkeypatch: pytest.MonkeyPatch) -> None:
+    sc = _score(1.0)
+    _patch_capture(
+        monkeypatch, invoke=_sequence(_TIMEOUT, Path("r.md")), extract=lambda *_a: _CANDS,
+        score=lambda *_a, **_k: sc,
+    )
+    score, outcomes = _capture_case_run("c", judge=None)
+    assert score is sc and outcomes == ["timeout", "scored"]
+
+
+def test_capture_case_run_nonzero_exit_is_retryable(monkeypatch: pytest.MonkeyPatch) -> None:
+    # a non-zero `claude` exit (rate limit) must NOT abort — it's a retryable invoke_error.
+    sc = _score(1.0)
+    _patch_capture(
+        monkeypatch, invoke=_sequence(_NONZERO, Path("r.md")), extract=lambda *_a: _CANDS,
+        score=lambda *_a, **_k: sc,
+    )
+    score, outcomes = _capture_case_run("c", judge=None)
+    assert score is sc and outcomes == ["invoke_error", "scored"]
+
+
+def test_capture_case_run_no_report_runtime_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    sc = _score(1.0)
+    _patch_capture(
+        monkeypatch, invoke=_sequence(RuntimeError("no report"), Path("r.md")),
+        extract=lambda *_a: _CANDS, score=lambda *_a, **_k: sc,
+    )
+    score, outcomes = _capture_case_run("c", judge=None)
+    assert score is sc and outcomes == ["no_report", "scored"]
+
+
+def test_capture_case_run_action_less_then_scores(monkeypatch: pytest.MonkeyPatch) -> None:
+    # a report with zero extractable findings is headless degradation -> retried.
+    sc = _score(1.0)
+    _patch_capture(
+        monkeypatch, invoke=lambda *_a: Path("r.md"), extract=_sequence([], _CANDS),
+        score=lambda *_a, **_k: sc,
+    )
+    score, outcomes = _capture_case_run("c", judge=None)
+    assert score is sc and outcomes == ["action_less", "scored"]
+
+
+def test_capture_case_run_all_attempts_fail_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_capture(
+        monkeypatch, invoke=_sequence(*([_TIMEOUT] * MAX_ATTEMPTS)), extract=lambda *_a: _CANDS,
+    )
+    score, outcomes = _capture_case_run("c", judge=None)
+    assert score is None  # harness outage -> absent from the gate, never a fabricated 0
+    assert outcomes == ["timeout"] * MAX_ATTEMPTS
+
+
+def test_capture_case_run_cleans_workspace_each_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[object] = []
+    monkeypatch.setattr(shutil, "rmtree", lambda ws, **_k: calls.append(ws))
+    _patch_capture(
+        monkeypatch, invoke=lambda *_a: Path("r.md"), extract=lambda *_a: _CANDS,
+        score=lambda *_a, **_k: _score(1.0),
+    )
+    _capture_case_run("c", judge=None)
+    assert len(calls) == 1  # finally: workspace removed even on the scoring (success) path
+
+
+def test_print_telemetry_summary(capsys: pytest.CaptureFixture[str]) -> None:
+    telemetry = [
+        {"case": "c1", "attempts": 2, "outcomes": ["timeout", "scored"], "accepted": True},
+        {"case": "c2", "attempts": 5, "outcomes": ["timeout"] * 5, "accepted": False},
+    ]
+    _print_telemetry(telemetry)
+    out = capsys.readouterr().out
+    assert "slots=2" in out and "scored=1" in out and "total_attempts=7" in out
+
+
+def test_print_telemetry_per_case_success_rate(capsys: pytest.CaptureFixture[str]) -> None:
+    telemetry = [{"case": "c1", "attempts": 2, "outcomes": ["timeout", "scored"], "accepted": True}]
+    per_case = {"c1": {"outcomes": ["timeout", "scored"]}}
+    _print_telemetry(telemetry, per_case)
+    out = capsys.readouterr().out
+    assert "c1: success_rate=" in out
 
 
 def _multi_run_baseline(cr_by_case: dict[str, float]) -> dict[str, object]:
