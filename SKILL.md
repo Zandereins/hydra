@@ -164,16 +164,7 @@ Note: focus flags for Volta or Navigator auto-escalate to deep mode when used wi
    {{N}} consecutive failures. Remaining agents run on Opus.`
 8. **Classify question type** (uses final resolved mode from steps 0.5 + 0.7): `CODE_REVIEW` | `ARCHITECTURE_DECISION` | `SECURITY_AUDIT` | `DEBUGGING` | `GENERAL_TECHNICAL`
    If `SECURITY_AUDIT` and standard mode: Sentinel is included. Proceed normally.
-9. **Determine input complexity** for dynamic word limits:
-   ```
-   INPUT_SIZE = count lines of source code provided
-   if INPUT_SIZE < 100:   COMPLEXITY = small   (word limits x 0.60)
-   if INPUT_SIZE < 300:   COMPLEXITY = medium  (word limits x 1.00)
-   if INPUT_SIZE >= 300:  COMPLEXITY = large   (word limits x 1.20)
-   ```
-   The `COMPLEXITY` variable determines advisor word limits (see `references/advisors.md`).
-   Mies+ carries two lenses (reduction + readability) and scales with complexity like the others.
-10. **Cost warning + confirmation:**
+9. **Cost warning + confirmation:**
 
 ```
 [Hydra] {{MODE_NAME}} mode -- {{AGENT_COUNT}} agents.

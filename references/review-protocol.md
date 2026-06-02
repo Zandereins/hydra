@@ -79,7 +79,7 @@ SECTION B: CROSS-ADVISOR ANALYSIS (~200 words)
   penalizing an advisor for "missing" evidence that is structurally unavailable.
 **The gap:** One consideration NO advisor addressed that matters for this question.
 
-SECTION C: PER-ADVISOR VERDICTS (~{{PART_C_WORDS}} words)
+SECTION C: PER-ADVISOR VERDICTS (~200 words)
 For EACH advisor ({{RESPONSE_LABELS}}):
 **Verdict:** SOUND | PARTIAL | FLAWED
   SOUND = conclusions follow from evidence, no factual errors found.
