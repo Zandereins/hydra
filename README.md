@@ -163,7 +163,7 @@ verdict.
 - `--no-review` -- skip peer review (only meaningful with deep, reduces to 7 agents, around $1.00)
 - `--transcript` -- save raw agent outputs separately
 
-**Focus flags:** `--focus security|perf|readability|architecture|reliability` -- gives the primary advisor 2x word budget. Mapping: security to Sentinel, perf to Volta, readability to Mies+, architecture to Navigator, reliability to Cassandra. Flags for `perf` and `architecture` auto-escalate to deep mode (those advisors only exist in deep).
+**Focus flags:** `--focus security|perf|readability|architecture|reliability` -- includes the mapped advisor and prioritizes matching files in the diff budget (not a word-budget or weighting multiplier). Mapping: security to Sentinel, perf to Volta, readability to Mies+, architecture to Navigator, reliability to Cassandra. Flags for `perf` and `architecture` auto-escalate to deep mode (those advisors only exist in deep).
 
 Costs are API calls to Claude and Codex, charged to your own accounts. Hydra always
 shows the estimate and asks before running.
