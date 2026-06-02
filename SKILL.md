@@ -697,7 +697,7 @@ chmod 600 .hydra/state.json
        "report_path": ".hydra/reports/hydra-{TIMESTAMP}-{SLUG}.md",
        "timestamp_unix": {UNIX_EPOCH},
        "top_actions": [
-         {"id": "A1", "severity": "CRITICAL", "file": "path", "lines": "47-62", "effort": "S", "summary": "action text"}
+         {"id": "A1", "severity": "CATASTROPHIC", "file": "path", "lines": "47-62", "effort": "S", "summary": "action text"}
        ],
        "verdict_lead": "first 2-3 sentences of verdict",
        "mode": "{PRESET_NAME}",
@@ -773,7 +773,7 @@ If `--transcript`: save raw agent outputs to separate file (see report-template.
 ## Hydra: {{TITLE}}
 
 VERDICT    {{ONE sentence from chairman/deterministic verdict}}
-ACTIONS    {{N}} findings: {{CRITICAL_N}} critical, {{SERIOUS_N}} serious, {{MODERATE_N}} moderate
+ACTIONS    {{N}} findings: {{CATASTROPHIC_N}} catastrophic, {{SERIOUS_N}} serious, {{MODERATE_N}} moderate
   1. [{{SEVERITY}}] {{file:line}} -- {{what}}. Est: {{effort}}.
   2. [{{SEVERITY}}] {{file:line}} -- {{what}}. Est: {{effort}}.
   3. [{{SEVERITY}}] {{file:line}} -- {{what}}. Est: {{effort}}.
