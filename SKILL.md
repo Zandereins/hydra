@@ -66,9 +66,9 @@ Legacy aliases (emit migration hint):
 - `--mode lite`, `--mode quick`, `--mode full`, `--mode broad`, `--mode secure`, `--mode focused` -> `[Hydra] Unknown mode. Use 'standard' (default) or '--mode deep'.`
 
 **Focus modes** (combinable with any mode): `--focus security | perf | readability | architecture | reliability`
-When a focus flag is active, the primary advisor for that focus gets 2x word budget.
-The chairman receives a focus directive weighting that advisor's findings at 1.5x.
 Focus mapping: security -> Sentinel, perf -> Volta, readability -> Mies+, architecture -> Navigator, reliability -> Cassandra.
+When a focus flag is active it does two concrete things: (1) the mapped focus advisor (above) is always included in the roster; (2) the diff budget prioritizes files matching the focus signal (Step 1). It does NOT change any advisor word ceiling (those are hard literals in `references/advisors.md`) or apply a numeric finding weight. The active focus is surfaced to the user via `{{FOCUS_NOTE_IF_ACTIVE}}` in the run-confirmation banner.
+`{{FOCUS_NOTE_IF_ACTIVE}}` resolves to a one-line note naming the active focus and its mapped advisor (e.g. `Focus: security -> Sentinel (primary lens)`) when a focus flag is set, and to the empty string (line omitted) when none is set.
 Note: focus flags for Volta or Navigator auto-escalate to deep mode when used with standard (these advisors only exist in deep mode). Mies+ exists in both modes (readability focus) and never auto-escalates.
 
 ---
