@@ -268,7 +268,14 @@ def gate_against_ci_baseline(
     return 1 if result.failed else 0
 
 
-MAX_ATTEMPTS = 5  # retry transient headless failures (timeout / no-report / action-less)
+# Retry transient headless failures (timeout / no-report / action-less). With a correctly
+# sized HYDRA_TIMEOUT_S each slot succeeds on attempt 1, so this only multiplies on genuine
+# persistent failure (rate-limit window, a case that always degrades). Worst-case cost per
+# case is N_runs x MAX_ATTEMPTS x timeout, so 3 (down from 5) caps the doomed-case Opus/wall-
+# clock burn ~40% — the multi-hour soak is what freezes the laptop. A persistent rate-limit
+# is handled by exit-and-resume-next-window (credits=0), not by burning retries in a doomed
+# window; 3 still absorbs a one-off transient blip.
+MAX_ATTEMPTS = 3
 
 
 def _median_metric_by_case(run_records: list[dict[str, Any]], attr: str) -> dict[str, float]:
