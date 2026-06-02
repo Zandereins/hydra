@@ -33,7 +33,7 @@ hydra_version: "1.0"
 timestamp: "{{TIMESTAMP}}"
 question_type: "{{QUESTION_TYPE}}"
 mode: "{{MODE}}"
-severity_counts: {critical: {{CRITICAL_COUNT}}, serious: {{SERIOUS_COUNT}}, moderate: {{MODERATE_COUNT}}}
+severity_counts: {catastrophic: {{CATASTROPHIC_COUNT}}, serious: {{SERIOUS_COUNT}}, moderate: {{MODERATE_COUNT}}}
 confidence_score: {{CONFIDENCE_SCORE}}
 confidence_label: "{{CONFIDENCE_LABEL}}"
 is_windowed: {{IS_WINDOWED}}
@@ -178,7 +178,7 @@ Map question type to signal line:
 ```
 ## Hydra: {{TITLE}}
 
-SEVERITY   CRITICAL [{{N}}]  SERIOUS [{{N}}]  MODERATE [{{N}}]
+SEVERITY   CATASTROPHIC [{{N}}]  SERIOUS [{{N}}]  MODERATE [{{N}}]
 CONFIDENCE {{SCORE}}% ({{LABEL}}) -- {{N}}/{{M}} advisors -- {{cross-model|opus-only}}
 {{IF diff_context}} SCOPE    {{DIFF_LINES}}/{{EST_TOTAL_LINES}} lines ({{SCOPE_PCT}}%) -- diff-anchored review{{ENDIF}}
 VERDICT    {{ONE sentence from chairman. Active voice. No hedging.}}
@@ -205,7 +205,7 @@ Use the chairman's DELTA BLOCK instead of the standard summary:
 ## Hydra Delta: {{TITLE}} (Iteration {{N}})
 
 PROGRESS  {{X}}/{{Y}} previous actions addressed
-TREND     {{Improving/Stable/Degrading}} -- CRITICAL: {{prev}} -> {{now}}, SERIOUS: {{prev}} -> {{now}}
+TREND     {{Improving/Stable/Degrading}} -- CATASTROPHIC: {{prev}} -> {{now}}, SERIOUS: {{prev}} -> {{now}}
 
 FIXED     {{resolved actions with evidence}}
 REMAINING {{unresolved actions -- why?}}
