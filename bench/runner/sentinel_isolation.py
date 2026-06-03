@@ -231,15 +231,23 @@ class RunResult:
 
 def _cli_argv(system_prompt_file: str, user: str) -> list[str]:
     """The `claude --print` argv for one Sentinel call (factored out for offline testing).
-    --bare skips hooks/LSP/plugins; --system-prompt-file REPLACES the default system prompt
-    (no CLAUDE.md pollution); the in-band JSON epilog is prompt-driven so it survives.
 
-    The user content is fenced behind a `--` end-of-options separator: Sentinel's user
-    prompt opens with `--- USER CODE ...`, and the CLI's commander parser treats any bare
-    positional starting with `--` as an unknown option (exit 1, no model call). `--` ends
-    option parsing so arbitrary untrusted content passes through as the positional prompt."""
+    NOT --bare: live-verified that `--bare` BREAKS OAuth-token auth on CLI 2.1.161 — it
+    returns "Not logged in · Please run /login" (exit 1) even with a valid
+    CLAUDE_CODE_OAUTH_TOKEN. Instead we mirror the proven headless path (invoke_hydra_1x):
+    `--settings '{"disableAllHooks": true}'` suppresses hooks (so e.g. a Stop hook can't abort
+    or pollute the response) without disabling auth. --system-prompt-file REPLACES the default
+    system prompt with Sentinel's, so the council/skill scaffolding is not in control and the
+    in-band JSON epilog (prompt-driven) survives. The caller runs this from a neutral cwd so no
+    project CLAUDE.md / skill auto-triggers.
+
+    The user content is fenced behind a `--` end-of-options separator: Sentinel's user prompt
+    opens with `--- USER CODE ...`, and the CLI's commander parser treats any bare positional
+    starting with `--` as an unknown option (exit 1, no model call). `--` ends option parsing
+    so arbitrary untrusted content passes through as the positional prompt."""
     return [
-        "claude", "--print", "--bare",
+        "claude", "--print",
+        "--settings", '{"disableAllHooks": true}',
         "--system-prompt-file", system_prompt_file,
         "--model", SENTINEL_MODEL,
         "--", user,
@@ -250,9 +258,13 @@ def _call_sentinel_cli(system: str, user: str) -> str:
     """Subscription-billed transport: one Sentinel response via `claude --print` with the
     headless OAuth token, so the cost lands on the Max plan instead of API credits.
 
-    ⚠️ LIVE-VERIFY before trusting at scale: the --bare / --system-prompt-file flags + OAuth
-    billing path are NOT yet exercised end-to-end. Confirm one call returns a parseable
-    HYDRA-STRUCTURED epilog (the SDK transport is the proven default)."""
+    LIVE-VERIFIED end-to-end (2026-06-03, ~66s/call): a control-arm call on case 01 returned
+    a parseable HYDRA-STRUCTURED epilog with the 3 expected Sentinel findings (Se-1/Se-2 the
+    mandatory auth-forward/log-leak, Se-3 the Math.random distractor), no skill self-trigger.
+    Runs from a neutral temp cwd so no project CLAUDE.md / global skill auto-activates; any
+    residual global-context leak is identical across both A/B arms, so it cancels in the
+    contrast (same logic as the prompt-reconstruction gap)."""
+    import shutil
     import tempfile
 
     from bench.runner.invoke_hydra_1x import _headless_auth_env
@@ -261,16 +273,20 @@ def _call_sentinel_cli(system: str, user: str) -> str:
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as fh:
         fh.write(system)
         sys_path = fh.name
+    cwd = tempfile.mkdtemp(prefix="sentinel-cli-")
     try:
         proc = subprocess.run(
             _cli_argv(sys_path, user),
-            env=env, capture_output=True, text=True, timeout=CLI_TIMEOUT_S,
+            env=env, cwd=cwd, capture_output=True, text=True, timeout=CLI_TIMEOUT_S,
         )
         if proc.returncode != 0:
             raise RuntimeError(f"claude --print exit {proc.returncode}: {proc.stderr[:300]}")
         return proc.stdout
     finally:
         os.unlink(sys_path)
+        # rmtree (not rmdir): if `claude` ever writes into the cwd, rmdir would raise in the
+        # finally and mask the real error/return; ignore_errors keeps cleanup best-effort.
+        shutil.rmtree(cwd, ignore_errors=True)
 
 
 def _call_sentinel(client: Any, *, system: str, user: str) -> str:

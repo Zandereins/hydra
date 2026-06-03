@@ -196,9 +196,13 @@ def test_summarize_excludes_degraded() -> None:
 # --- cli transport (subscription) command construction (offline; live call NOT in CI) ---
 
 
-def test_cli_argv_uses_print_bare_and_system_prompt_file() -> None:
+def test_cli_argv_uses_print_settings_and_system_prompt_file() -> None:
     argv = _cli_argv("/tmp/sys.txt", "USER_CONTENT")
-    assert argv[:3] == ["claude", "--print", "--bare"]
+    assert argv[:2] == ["claude", "--print"]
+    # NOT --bare: it breaks OAuth-token auth on CLI 2.1.161 ("Not logged in"). Hooks are
+    # suppressed via --settings instead, mirroring the proven invoke_hydra_1x headless path.
+    assert "--bare" not in argv
+    assert argv[argv.index("--settings") + 1] == '{"disableAllHooks": true}'
     assert "--system-prompt-file" in argv
     assert argv[argv.index("--system-prompt-file") + 1] == "/tmp/sys.txt"
     assert argv[argv.index("--model") + 1] == SENTINEL_MODEL
