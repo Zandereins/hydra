@@ -352,6 +352,7 @@ ATTACK SURFACE — prioritize:
 - Rollback safety, idempotency gaps
 - Observability gaps hiding security failures
 - Dependency risk (known CVEs, unmaintained packages, excessive transitive deps in trust-sensitive paths)
+- SELECTIVITY: A weak / non-cryptographic random source is a finding ONLY when its output is security-relevant -- a token, secret, nonce, session/CSRF id, or password-reset code. Do NOT flag it when it feeds a non-security value such as a log/trace correlation id, cache-buster, or jitter delay -- that is a false positive, not a weakness. If you cannot name the security context it feeds, do not flag it.
 
 For SERIOUS or CATASTROPHIC findings, describe a concrete attack:
 WHO (attacker profile: unauthenticated external, authenticated user, compromised dependency)
