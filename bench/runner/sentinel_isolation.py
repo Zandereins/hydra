@@ -97,6 +97,12 @@ def build_sentinel_system(md: str, *, boundary: str, with_edit: bool) -> str:
     sentinel_section = _section(md, "## Advisor 5: Sentinel", "## Opus Advisor 6: Echo")
     prompt = _fence_body(sentinel_section)
 
+    # The SELECTIVITY bullet shipped into the base advisors.md (fix #22). Strip any existing
+    # copy first so the A/B contrast is exactly "bullet absent (control) vs present
+    # (treatment)" regardless of the base file's state — the harness stays a valid re-test of
+    # this edit, and re-running it now confirms the shipped clause still beats noise.
+    prompt = re.sub(r"^- SELECTIVITY:.*(?:\n|$)", "", prompt, flags=re.MULTILINE)
+
     if with_edit:
         if prompt.count(_DEP_RISK_ANCHOR) != 1:
             raise ValueError("dependency-risk anchor not found exactly once in Sentinel prompt")
