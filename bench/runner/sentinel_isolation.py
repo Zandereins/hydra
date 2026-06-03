@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -44,6 +45,11 @@ CASE_ID = "01-axios-header-injection"
 CASE_DIR = Path(__file__).resolve().parents[2] / "bench" / "cases" / CASE_ID
 SENTINEL_MODEL = os.environ.get("HYDRA_ADVISOR_MODEL", "claude-opus-4-8")
 MAX_RETRIES = 4
+# Transport: "sdk" = Anthropic() messages.create (ANTHROPIC_API_KEY, pay-as-you-go credits);
+# "cli" = `claude --print` with the headless OAuth token (CLAUDE_CODE_OAUTH_TOKEN), so the
+# cost lands on the Max subscription instead of credits (shares the interactive rate-limit).
+TRANSPORT = os.environ.get("HYDRA_SENTINEL_TRANSPORT", "sdk")
+CLI_TIMEOUT_S = int(os.environ.get("HYDRA_SENTINEL_CLI_TIMEOUT_S", "300"))
 
 # The ONE surgical edit under test: a SELECTIVITY bullet inserted into Sentinel's ATTACK
 # SURFACE list. It names the distractor MECHANISM (weak PRNG -> non-security value) without
@@ -223,8 +229,69 @@ class RunResult:
     raw_len: int
 
 
+def _cli_argv(system_prompt_file: str, user: str) -> list[str]:
+    """The `claude --print` argv for one Sentinel call (factored out for offline testing).
+
+    NOT --bare: live-verified that `--bare` BREAKS OAuth-token auth on CLI 2.1.161 — it
+    returns "Not logged in · Please run /login" (exit 1) even with a valid
+    CLAUDE_CODE_OAUTH_TOKEN. Instead we mirror the proven headless path (invoke_hydra_1x):
+    `--settings '{"disableAllHooks": true}'` suppresses hooks (so e.g. a Stop hook can't abort
+    or pollute the response) without disabling auth. --system-prompt-file REPLACES the default
+    system prompt with Sentinel's, so the council/skill scaffolding is not in control and the
+    in-band JSON epilog (prompt-driven) survives. The caller runs this from a neutral cwd so no
+    project CLAUDE.md / skill auto-triggers.
+
+    The user content is fenced behind a `--` end-of-options separator: Sentinel's user prompt
+    opens with `--- USER CODE ...`, and the CLI's commander parser treats any bare positional
+    starting with `--` as an unknown option (exit 1, no model call). `--` ends option parsing
+    so arbitrary untrusted content passes through as the positional prompt."""
+    return [
+        "claude", "--print",
+        "--settings", '{"disableAllHooks": true}',
+        "--system-prompt-file", system_prompt_file,
+        "--model", SENTINEL_MODEL,
+        "--", user,
+    ]
+
+
+def _call_sentinel_cli(system: str, user: str) -> str:
+    """Subscription-billed transport: one Sentinel response via `claude --print` with the
+    headless OAuth token, so the cost lands on the Max plan instead of API credits.
+
+    LIVE-VERIFIED end-to-end (2026-06-03, ~66s/call): a control-arm call on case 01 returned
+    a parseable HYDRA-STRUCTURED epilog with the 3 expected Sentinel findings (Se-1/Se-2 the
+    mandatory auth-forward/log-leak, Se-3 the Math.random distractor), no skill self-trigger.
+    Runs from a neutral temp cwd so no project CLAUDE.md / global skill auto-activates; any
+    residual global-context leak is identical across both A/B arms, so it cancels in the
+    contrast (same logic as the prompt-reconstruction gap)."""
+    import shutil
+    import tempfile
+
+    from bench.runner.invoke_hydra_1x import _headless_auth_env
+
+    env = _headless_auth_env()  # raises if CLAUDE_CODE_OAUTH_TOKEN is absent
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8") as fh:
+        fh.write(system)
+        sys_path = fh.name
+    cwd = tempfile.mkdtemp(prefix="sentinel-cli-")
+    try:
+        proc = subprocess.run(
+            _cli_argv(sys_path, user),
+            env=env, cwd=cwd, capture_output=True, text=True, timeout=CLI_TIMEOUT_S,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"claude --print exit {proc.returncode}: {proc.stderr[:300]}")
+        return proc.stdout
+    finally:
+        os.unlink(sys_path)
+        # rmtree (not rmdir): if `claude` ever writes into the cwd, rmdir would raise in the
+        # finally and mask the real error/return; ignore_errors keeps cleanup best-effort.
+        shutil.rmtree(cwd, ignore_errors=True)
+
+
 def _call_sentinel(client: Any, *, system: str, user: str) -> str:
-    """One Opus message with the judge's transient-retry policy. Returns response text.
+    """One Sentinel response with transient-retry. Transport = TRANSPORT: "sdk" (API-key
+    messages.create) or "cli" (`claude --print`, subscription-billed).
 
     No explicit temperature: current Opus (4.8) rejects the parameter ("deprecated for this
     model"), and the model's default sampling already gives the run-to-run variance the A/B
@@ -232,6 +299,8 @@ def _call_sentinel(client: Any, *, system: str, user: str) -> str:
     last: Exception | None = None
     for attempt in range(MAX_RETRIES):
         try:
+            if TRANSPORT == "cli":
+                return _call_sentinel_cli(system, user)
             resp = client.messages.create(
                 model=SENTINEL_MODEL,
                 # 8192, not 2048: Sentinel's prose runs to an 1800-word ceiling and the JSON
@@ -357,15 +426,25 @@ def decide(a: ArmStats, b: ArmStats) -> dict[str, Any]:
 
 def run_experiment(*, n_per_arm: int, pilot_n: int, yes: bool,
                    out_path: Path | None) -> int:
-    if not has_anthropic_credential():
-        print("[ERROR] no anthropic credential (ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN).",
-              file=sys.stderr)
-        return 2
-    try:
-        from anthropic import Anthropic
-    except ImportError:
-        print("[ERROR] anthropic SDK not installed.", file=sys.stderr)
-        return 2
+    client: Any = None
+    if TRANSPORT == "cli":
+        from bench.runner.invoke_hydra_1x import _headless_auth_env
+        try:
+            _headless_auth_env()  # raises if CLAUDE_CODE_OAUTH_TOKEN is absent
+        except RuntimeError as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            return 2
+    else:
+        if not has_anthropic_credential():
+            print("[ERROR] no anthropic credential (ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN).",
+                  file=sys.stderr)
+            return 2
+        try:
+            from anthropic import Anthropic
+        except ImportError:
+            print("[ERROR] anthropic SDK not installed.", file=sys.stderr)
+            return 2
+        client = Anthropic()
 
     md = ADVISORS_MD.read_text()
     anchors = load_negative_anchors(CASE_ID)
@@ -383,7 +462,9 @@ def run_experiment(*, n_per_arm: int, pilot_n: int, yes: bool,
         print("[ERROR] billing not confirmed — aborted.", file=sys.stderr)
         return 2
 
-    client = Anthropic()
+    print(f"[sentinel-iso] transport={TRANSPORT} "
+          f"({'subscription/OAuth' if TRANSPORT == 'cli' else 'API-key/credits'})",
+          file=sys.stderr)
     all_runs: list[RunResult] = []
 
     def _phase(label: str, n: int, start: int) -> None:

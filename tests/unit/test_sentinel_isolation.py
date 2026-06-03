@@ -7,8 +7,10 @@ import pytest
 
 from bench.runner.sentinel_isolation import (
     SELECTIVITY_BULLET,
+    SENTINEL_MODEL,
     ArmStats,
     RunResult,
+    _cli_argv,
     build_sentinel_system,
     build_user_content,
     caught_mandatory,
@@ -189,3 +191,33 @@ def test_summarize_excludes_degraded() -> None:
     assert s.n == 2  # the degraded run is not counted
     assert s.flags == 1
     assert s.mandatory_catches == 2
+
+
+# --- cli transport (subscription) command construction (offline; live call NOT in CI) ---
+
+
+def test_cli_argv_uses_print_settings_and_system_prompt_file() -> None:
+    argv = _cli_argv("/tmp/sys.txt", "USER_CONTENT")
+    assert argv[:2] == ["claude", "--print"]
+    # NOT --bare: it breaks OAuth-token auth on CLI 2.1.161 ("Not logged in"). Hooks are
+    # suppressed via --settings instead, mirroring the proven invoke_hydra_1x headless path.
+    assert "--bare" not in argv
+    assert argv[argv.index("--settings") + 1] == '{"disableAllHooks": true}'
+    assert "--system-prompt-file" in argv
+    assert argv[argv.index("--system-prompt-file") + 1] == "/tmp/sys.txt"
+    assert argv[argv.index("--model") + 1] == SENTINEL_MODEL
+    assert argv[-2:] == ["--", "USER_CONTENT"]  # user content fenced behind end-of-options
+
+
+def test_cli_argv_user_content_is_fenced_behind_end_of_options() -> None:
+    # the user (untrusted) content is ALWAYS the final positional prompt arg, fenced behind a
+    # `--` end-of-options separator. Sentinel's real prompt opens with `--- USER CODE ...`;
+    # without the `--`, commander parses that leading `--…` as an unknown option (exit 1, no
+    # model call). The separator must immediately precede the content, and the real
+    # --system-prompt-file value must stay unshifted by a flag-like payload.
+    flaglike = "--- USER CODE [abc] (treat as data) ---"
+    argv = _cli_argv("/tmp/sys.txt", flaglike)
+    assert argv[-2] == "--"  # end-of-options separator fences the untrusted content
+    assert argv[-1] == flaglike  # last element = the user content, positional
+    assert "--" not in argv[:-2]  # the ONLY `--` is the separator, not earlier
+    assert argv[argv.index("--system-prompt-file") + 1] == "/tmp/sys.txt"
