@@ -1,0 +1,15 @@
+diff --git a/src/auth/magicLink.ts b/src/auth/magicLink.ts
+index 023b776..793bc74 100644
+--- a/src/auth/magicLink.ts
++++ b/src/auth/magicLink.ts
+@@ -5,3 +5,10 @@ export function assetUrl(path: string): string {
+   const bust = Math.random().toString(36).slice(2);
+   return `${path}?v=${bust}`;
+ }
++
++export function createMagicSignInLink(email: string): string {
++  // Possession of this value grants one-click account access when emailed to the user.
++  const linkId = Math.random().toString(36).slice(2) + Date.now().toString(36);
++  store.put(linkId, { email, kind: "sign-in" });
++  return `https://app.example.com/auth/verify?lid=${linkId}`;
++}

@@ -37,8 +37,23 @@ class RunSpec:
 
 
 def discover_cases() -> list[str]:
-    """Return sorted case-directory names from CASES_DIR."""
-    return sorted(p.name for p in CASES_DIR.iterdir() if p.is_dir())
+    """Return sorted case-directory names for the STANDARD bench suite.
+
+    Cases whose manifest declares ``suite: isolation`` are excluded — they exist only for the
+    single-advisor isolation experiments (sentinel_isolation.py), which reference them by
+    explicit id, and must not enter the calibrate/gate suite (they have no submodule and a
+    different measurement contract). Absent ``suite`` defaults to the standard suite."""
+    out: list[str] = []
+    for p in sorted(CASES_DIR.iterdir()):
+        if not p.is_dir():
+            continue
+        manifest = p / "manifest.yaml"
+        if manifest.exists():
+            meta = yaml.safe_load(manifest.read_text())
+            if isinstance(meta, dict) and meta.get("suite") == "isolation":
+                continue
+        out.append(p.name)
+    return out
 
 
 def plan_runs(*, mode: str) -> list[RunSpec]:
