@@ -7,8 +7,10 @@ import pytest
 
 from bench.runner.sentinel_isolation import (
     SELECTIVITY_BULLET,
+    SENTINEL_MODEL,
     ArmStats,
     RunResult,
+    _cli_argv,
     build_sentinel_system,
     build_user_content,
     caught_mandatory,
@@ -189,3 +191,24 @@ def test_summarize_excludes_degraded() -> None:
     assert s.n == 2  # the degraded run is not counted
     assert s.flags == 1
     assert s.mandatory_catches == 2
+
+
+# --- cli transport (subscription) command construction (offline; live call NOT in CI) ---
+
+
+def test_cli_argv_uses_print_bare_and_system_prompt_file() -> None:
+    argv = _cli_argv("/tmp/sys.txt", "USER_CONTENT")
+    assert argv[:3] == ["claude", "--print", "--bare"]
+    assert "--system-prompt-file" in argv
+    assert argv[argv.index("--system-prompt-file") + 1] == "/tmp/sys.txt"
+    assert argv[argv.index("--model") + 1] == SENTINEL_MODEL
+    assert argv[-1] == "USER_CONTENT"  # user content is the final prompt arg
+
+
+def test_cli_argv_user_content_is_final_positional_even_if_flaglike() -> None:
+    # the user (untrusted) content is ALWAYS the final positional prompt arg — even if it
+    # looks like a flag, it is not interpreted as one (it follows all flags), and the real
+    # --system-prompt-file value is unshifted by the lookalike.
+    argv = _cli_argv("/tmp/sys.txt", "--model")
+    assert argv[-1] == "--model"  # last element = the user content, positional
+    assert argv[argv.index("--system-prompt-file") + 1] == "/tmp/sys.txt"
