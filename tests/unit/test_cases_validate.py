@@ -20,7 +20,12 @@ EXPECTED_CASE_COUNT = 8  # 5 original + 3 new (concurrency/data/api) — spec §
 
 
 def _case_dirs() -> list[Path]:
-    return sorted(p for p in CASES_DIR.iterdir() if p.is_dir())
+    # STANDARD suite only: isolation-only cases (suite: isolation) have a different contract
+    # (single mandatory finding, no submodule) and their own offline tests. Reuse the run_bench
+    # discovery so the filter has one source of truth.
+    from bench.runner.run_bench import discover_cases
+
+    return [CASES_DIR / name for name in discover_cases()]
 
 
 def _load_gt(case: Path) -> list[GroundTruthFinding]:

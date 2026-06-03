@@ -1,0 +1,20 @@
+diff --git a/src/auth/passwordReset.ts b/src/auth/passwordReset.ts
+index e089544..8d76ff2 100644
+--- a/src/auth/passwordReset.ts
++++ b/src/auth/passwordReset.ts
+@@ -3,6 +3,15 @@ import { sendMail } from "../mailer";
+ 
+ const TOKEN_TTL_MS = 1000 * 60 * 30;
+ 
++// Build the single-use token a user clicks in the reset email.
++function generateResetToken(): string {
++  let token = "";
++  for (let i = 0; i < 24; i++) {
++    token += Math.floor(Math.random() * 16).toString(16);
++  }
++  return token;
++}
++
+ export async function requestPasswordReset(email: string): Promise<void> {
+   const user = await db.users.findByEmail(email);
+   if (!user) return;

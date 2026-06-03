@@ -1,0 +1,20 @@
+id: 31-weak-prng-magic-link
+suite: isolation
+category: security
+severity_target: SERIOUS
+source:
+  origin: hand-crafted
+  inspired_by: "CWE-330 weak PRNG for a magic sign-in link (non-enumerated)"
+description: |
+  Base ships a benign cache-buster (assetUrl — must NOT be flagged).
+  diff.patch adds createMagicSignInLink, whose link identifier is minted
+  from Math.random() + Date.now() and grants one-click account access.
+  Expected find: predictable sign-in link enabling account takeover (CWE-330).
+  ROLE — NON-ENUMERATED real-test for the crypto-FN over-suppression re-test
+  (PR #22 caveat): the source never uses the words token/secret/nonce/
+  session/csrf/reset, so flagging it requires reasoning about access
+  semantics, not keyword echo. Engineered off-ceiling; carries the closure
+  claim. The benign cache-buster (line 5) sits >5 lines from the security
+  PRNG (line 11) so the two are cleanly separable under RANGE_TOL=5.
+expected_issue_class: crypto_misuse
+expected_severity: SERIOUS
