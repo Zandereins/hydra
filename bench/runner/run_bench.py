@@ -498,11 +498,27 @@ def main() -> None:
         help="compare results against this baseline and exit 1 on release regression",
     )
 
+    sj = sub.add_parser("score-judge", help="score the real judge over the gold-set (BILLED)")
+    sj.add_argument(
+        "--check", type=float, default=None,
+        help="exit 1 if accuracy < threshold (cheap gate for routing JUDGE-prompt edits)",
+    )
+    sj.add_argument("--model", default=None, help="override HYDRA_JUDGE_MODEL for one run")
+    sj.add_argument("--json", action="store_true")
+    sj.add_argument("--yes", action="store_true", help="skip the billing confirmation prompt")
+
     args = parser.parse_args()
 
     if args.command == "bench":
         raise SystemExit(
             _run_mode(args.mode, baseline_out=args.baseline_out, check_baseline=args.check_baseline)
+        )
+
+    if args.command == "score-judge":
+        from bench.runner.score_judge import run_score_judge
+
+        raise SystemExit(
+            run_score_judge(model=args.model, check=args.check, as_json=args.json, yes=args.yes)
         )
 
     score = run_single_case(args.case, args.candidates)
