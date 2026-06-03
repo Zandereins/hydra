@@ -1,0 +1,18 @@
+id: 30-weak-prng-reset-token
+suite: isolation
+category: security
+severity_target: SERIOUS
+source:
+  origin: hand-crafted
+  inspired_by: "CWE-330 weak PRNG used for a security-relevant token"
+description: |
+  diff.patch adds generateResetToken, which builds the single-use
+  password-reset token from concatenated Math.random() hex digits (a
+  non-cryptographic PRNG). Expected find: predictable reset token enabling
+  account takeover.
+  ROLE — ENUMERATED FLOOR for the crypto-FN over-suppression re-test
+  (PR #22 caveat): the SELECTIVITY clause literally lists "password-reset
+  code", so a flag here proves the harness/transport/control arm elicit a
+  true CWE-330. It does NOT carry the closure claim (expected near-ceiling).
+expected_issue_class: crypto_misuse
+expected_severity: SERIOUS

@@ -122,3 +122,28 @@ def ci_regression(
 def success_rate(*, n_scored: int, n_attempts: int) -> float:
     """Harness reliability: scored runs / total attempts (0.0 when no attempts)."""
     return n_scored / n_attempts if n_attempts else 0.0
+
+
+def newcombe_diff_ci(
+    a: int, na: int, b: int, nb: int, *, confidence: float = 0.95
+) -> tuple[float, float]:
+    """Newcombe (1998) MOVER score interval for the difference ``p_b - p_a`` of two
+    independent proportions (here: treatment B minus control A), reusing the per-arm
+    :func:`wilson_ci`.
+
+    Used for a NON-INFERIORITY check: a difference CI against a pre-registered margin is the
+    right tool, not a significance test (a non-significant Fisher p is absence-of-evidence,
+    not evidence of equivalence). The lower limit of ``D = p_b - p_a`` pairs B at its Wilson
+    LOWER bound (how far B can drop) with A at its Wilson UPPER bound (how far A can rise) —
+    the worst case for the difference. Getting this pairing backwards understates the downside
+    near the ceiling and can spuriously declare non-inferiority, so the term assignment below
+    is deliberate and load-bearing. Verified against Newcombe's worked example
+    (56/70 vs 48/80 -> ~[0.05, 0.33]). ``n == 0`` arms degrade to a point of 0.0."""
+    pa = a / na if na else 0.0
+    pb = b / nb if nb else 0.0
+    ca = wilson_ci(a, na, confidence=confidence)
+    cb = wilson_ci(b, nb, confidence=confidence)
+    diff = pb - pa
+    lo = diff - math.sqrt((pb - cb.ci_low) ** 2 + (ca.ci_high - pa) ** 2)
+    hi = diff + math.sqrt((cb.ci_high - pb) ** 2 + (pa - ca.ci_low) ** 2)
+    return (max(-1.0, lo), min(1.0, hi))
