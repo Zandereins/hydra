@@ -25,7 +25,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # re-pinning 1.x — the baseline JSON `label` and `commit_sha` track this.
 COMMIT_SHA = os.environ.get("HYDRA_1X_REF", "3506f93")
 HYDRA_1X_LABEL = f"hydra-1.x@{COMMIT_SHA}"
-HYDRA_TIMEOUT_S = int(os.environ.get("HYDRA_TIMEOUT_S", "600"))
+# A clean standard-mode council (6 Opus advisors + chairman) writes its report+sidecar in
+# ~975s (measured 2026-06-02, case 01, instrumented single run). The previous 600s default
+# killed every run mid-flight — the subprocess never returned, so the Opus tokens already
+# generated were discarded and the case scored 0 (all-`timeout`). 1500s gives ~54% headroom
+# over the measured clean-run latency so runs actually complete; env-overridable for deep
+# mode / slower substrate.
+HYDRA_TIMEOUT_S = int(os.environ.get("HYDRA_TIMEOUT_S", "1500"))
 
 # Strict env ALLOWLIST for subprocesses exposed to untrusted workspace content (roadmap
 # 1.1). The /hydra subprocess reviews attacker-influenceable code and the git calls run
