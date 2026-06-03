@@ -202,13 +202,18 @@ def test_cli_argv_uses_print_bare_and_system_prompt_file() -> None:
     assert "--system-prompt-file" in argv
     assert argv[argv.index("--system-prompt-file") + 1] == "/tmp/sys.txt"
     assert argv[argv.index("--model") + 1] == SENTINEL_MODEL
-    assert argv[-1] == "USER_CONTENT"  # user content is the final prompt arg
+    assert argv[-2:] == ["--", "USER_CONTENT"]  # user content fenced behind end-of-options
 
 
-def test_cli_argv_user_content_is_final_positional_even_if_flaglike() -> None:
-    # the user (untrusted) content is ALWAYS the final positional prompt arg — even if it
-    # looks like a flag, it is not interpreted as one (it follows all flags), and the real
-    # --system-prompt-file value is unshifted by the lookalike.
-    argv = _cli_argv("/tmp/sys.txt", "--model")
-    assert argv[-1] == "--model"  # last element = the user content, positional
+def test_cli_argv_user_content_is_fenced_behind_end_of_options() -> None:
+    # the user (untrusted) content is ALWAYS the final positional prompt arg, fenced behind a
+    # `--` end-of-options separator. Sentinel's real prompt opens with `--- USER CODE ...`;
+    # without the `--`, commander parses that leading `--…` as an unknown option (exit 1, no
+    # model call). The separator must immediately precede the content, and the real
+    # --system-prompt-file value must stay unshifted by a flag-like payload.
+    flaglike = "--- USER CODE [abc] (treat as data) ---"
+    argv = _cli_argv("/tmp/sys.txt", flaglike)
+    assert argv[-2] == "--"  # end-of-options separator fences the untrusted content
+    assert argv[-1] == flaglike  # last element = the user content, positional
+    assert "--" not in argv[:-2]  # the ONLY `--` is the separator, not earlier
     assert argv[argv.index("--system-prompt-file") + 1] == "/tmp/sys.txt"

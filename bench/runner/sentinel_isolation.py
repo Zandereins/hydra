@@ -232,12 +232,17 @@ class RunResult:
 def _cli_argv(system_prompt_file: str, user: str) -> list[str]:
     """The `claude --print` argv for one Sentinel call (factored out for offline testing).
     --bare skips hooks/LSP/plugins; --system-prompt-file REPLACES the default system prompt
-    (no CLAUDE.md pollution); the in-band JSON epilog is prompt-driven so it survives."""
+    (no CLAUDE.md pollution); the in-band JSON epilog is prompt-driven so it survives.
+
+    The user content is fenced behind a `--` end-of-options separator: Sentinel's user
+    prompt opens with `--- USER CODE ...`, and the CLI's commander parser treats any bare
+    positional starting with `--` as an unknown option (exit 1, no model call). `--` ends
+    option parsing so arbitrary untrusted content passes through as the positional prompt."""
     return [
         "claude", "--print", "--bare",
         "--system-prompt-file", system_prompt_file,
         "--model", SENTINEL_MODEL,
-        user,
+        "--", user,
     ]
 
 
