@@ -514,7 +514,7 @@ Before choosing a verdict path, compute from advisor/reviewer outputs:
 5. **Coverage gaps:** Findings missing file path refs → collect as finding ID + advisor name.
 6. **Reviewer label summary** (skip if no reviewers): Count [CORROBORATED], [CONTRADICTED],
    [CRITICAL MISS], [SHARED BLIND SPOT]. For [CONTRADICTED] include conflicting IDs.
-7. **Severity scan:** Collect SERIOUS/CATASTROPHIC findings. Set `HAS_SERIOUS_PLUS`.
+7. **Severity scan:** First **normalize** any non-canonical severity an advisor emitted (defense-in-depth against model vocab drift): `critical`->CATASTROPHIC, `high`->SERIOUS, `medium`/`low`/`minor`/`trivial`/`info`->MODERATE (case-insensitive); canonical advisor severities are CATASTROPHIC|SERIOUS|MODERATE only. Then collect SERIOUS/CATASTROPHIC findings. Set `HAS_SERIOUS_PLUS`.
 8. **Evidence chains:** Extract CHAIN lines from each finding for dedup and verify.
 
 **Consensus Map construction (orchestrator-owned):**
