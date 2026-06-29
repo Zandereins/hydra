@@ -9,7 +9,7 @@ The orchestrator reads this at Step 4. Reviewers see all advisor responses label
 Label responses A-F (A=Cassandra, B=Mies+, C=Navigator, D=Volta, E=Sentinel, F=Echo).
 All reviewers see the same labels — no permutation needed.
 Preserve original field headings.
-Omit labels for advisors that didn't run (e.g., a standard-mode subset would be A, B, E, F -- but reviewers run in deep mode only, so all of A-F are present whenever reviewers run).
+Omit labels for advisors that didn't run: **standard** mode reviews A, B, E, F (Cassandra, Mies+, Sentinel, Echo -- Navigator/Volta are deep-only); **deep** mode reviews all of A-F.
 In `--no-codex` mode, all 6 advisors run on Opus — include all labels A-F.
 
 Wrap each response using the `{{BOUNDARY}}` token from Step 0:
@@ -32,7 +32,7 @@ Prompt assembled per two-pass rule (SKILL.md Step 0.6).
 
 ## Reviewer Assignments
 
-3 Opus reviewers in deep mode without --no-review.
+3 Opus reviewers whenever the review phase runs -- standard and deep, unless `--no-review`.
 No Codex reviewers. Minimum: 2 of 3.
 
 ### 1: Cross-Examiner (Opus)
@@ -93,7 +93,7 @@ For EACH advisor ({{RESPONSE_LABELS}}):
 Omit commentary for SOUND advisors — silence means agreement.
 
 RULES:
-- Max words: 6 responses → 800 (300+200+300). 3 responses → 650 (300+200+150). No preamble.
+- Max words: 6 responses → 800 (300+200+300). 4 responses (standard) → 700 (300+200+200). 3 responses → 650 (300+200+150). No preamble.
 - FLAWED requires a specific, cited error. You cannot call an advisor FLAWED without
   showing what they got wrong.
 - "Missing" means YOU identified something in the code within their stated scope
