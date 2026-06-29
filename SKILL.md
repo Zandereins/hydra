@@ -239,9 +239,27 @@ if [[ -n "$PREV_TIMESTAMP" && ! "$PREV_TIMESTAMP" =~ ^[0-9]{8}T[0-9]{6}$ ]]; the
   unset PREV_TIMESTAMP
 fi
 
-# hydra branch / hydra pr: hunks against base branch (note `--` separator enforces pathspec)
-BASE=$(git merge-base HEAD main)  # fallback: master, develop
-git diff -U30 "$BASE"...HEAD -- "${reviewed_files[@]}"
+# hydra branch / hydra pr: hunks against the base branch (`--` separator enforces pathspec).
+# Resolve the base robustly so a non-`main` default branch (e.g. axios uses `v1.x`) or a
+# gitflow `develop` repo is never mis-detected into a silent empty diff: prefer the PR's own
+# base ref (`hydra pr`), then the repo default via origin/HEAD, then the first existing of
+# main/master/develop. Guard an empty base -> fall back to full-file review.
+BASE_CANDIDATES=()
+PR_BASE=$(gh pr view --json baseRefName -q .baseRefName 2>/dev/null)
+[ -n "$PR_BASE" ] && BASE_CANDIDATES+=("origin/$PR_BASE" "$PR_BASE")
+DEFAULT_BRANCH=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)
+[ -n "$DEFAULT_BRANCH" ] && BASE_CANDIDATES+=("$DEFAULT_BRANCH")
+BASE_CANDIDATES+=(origin/main origin/master origin/develop main master develop)
+BASE=""
+for ref in "${BASE_CANDIDATES[@]}"; do
+  BASE=$(git merge-base HEAD "$ref" 2>/dev/null) && [ -n "$BASE" ] && break
+done
+if [ -z "$BASE" ]; then
+  echo "[Hydra] Could not resolve a base branch (tried PR base, origin/HEAD, main/master/develop) --" \
+       "falling back to full-file review (hydra this) instead of a diff." >&2
+else
+  git diff -U30 "$BASE"...HEAD -- "${reviewed_files[@]}"
+fi
 
 # hydra iterate: hunks since previous report (PREV_TIMESTAMP already validated above)
 git diff -U30 "@{$PREV_TIMESTAMP}" -- "${reviewed_files[@]}"
@@ -898,9 +916,9 @@ Signal taxonomy for auto-selection:
 
 Trigger: `hydra branch`. Reviews all changes on current branch vs base.
 
-1. Detect base: `git merge-base HEAD main` (fallback: `master`, `develop`)
-2. Get diff: `git diff $(git merge-base HEAD main)...HEAD`
-3. Get log: `git log --oneline $(git merge-base HEAD main)..HEAD`
+1. Detect base robustly (see the base-resolution block above): the PR's base ref (`hydra pr`), else the repo default via `git symbolic-ref --short refs/remotes/origin/HEAD`, else the first existing of `main`/`master`/`develop`; guard an empty base. A hardcoded `main` mis-detects on non-`main`-default repos (e.g. axios uses `v1.x`).
+2. Get diff: `git diff -U30 "$BASE"...HEAD`
+3. Get log: `git log --oneline "$BASE"..HEAD`
 4. Auto-classify from branch name: `feat/*` -> feature, `fix/*` -> hotfix, `refactor/*` -> refactor
 5. Run standard Hydra with diff as input. Default: standard for <300 lines, deep for 300+.
 
@@ -912,7 +930,7 @@ Trigger: `hydra pr`. Reviews the current branch's changes vs base (like `hydra b
 ingests the pull request's title + description, so Echo's plan-vs-diff drift and scope-creep
 checks (4-5) can run against the stated intent.
 
-1. Diff + log: same as Branch Review (base = `git merge-base HEAD main`, fallback `master`/`develop`).
+1. Diff + log: same as Branch Review (base resolved via the PR's `baseRefName`, else origin/HEAD, else `main`/`master`/`develop`; empty-base guarded).
 2. Fetch PR context (read-only, current branch's PR):
    ```bash
    gh pr view --json title,body -q '.title + "\n\n" + .body' 2>/dev/null
