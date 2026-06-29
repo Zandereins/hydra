@@ -26,12 +26,13 @@ description: >
 # Hydra
 
 Four advisors analyze your code from different angles by default (standard mode) --
-including Echo, which reviews AI-assisted-development failure modes. Escalate to deep
-mode for the full council: six advisors, three cross-examining reviewers, and a
-chairman synthesizing the final verdict.
+including Echo, which reviews AI-assisted-development failure modes -- then three peer
+reviewers cross-examine them and a chairman synthesizes the verdict. Escalate to deep
+mode for the full council: six advisors plus cross-model (Codex) diversity.
 
-Standard mode runs 4 advisors + chairman on Opus (~$0.35-0.65). Deep mode adds 2 more
-advisors (including 2 Codex), 3 reviewers, and cross-model diversity (~$1.50-2.50).
+Standard mode runs 4 advisors + 3 reviewers + chairman on Opus (~$0.70-1.20); add
+`--no-review` for the fast 4-advisor path (~$0.35-0.65). Deep mode adds 2 more advisors
+(including 2 Codex) and cross-model diversity, with the reviewers examining all 6 (~$1.50-2.50).
 
 Reference files in `references/` define all prompts and protocols -- read them at the
 relevant step.
@@ -42,18 +43,19 @@ relevant step.
 
 | Mode | CLI | Advisors | Reviewers | Chairman | Total | Est. Cost |
 |------|-----|----------|-----------|----------|-------|-----------|
-| **standard** | *(default)* | 4 (Cassandra + Mies+ + Sentinel + Echo) | 0 | 1 Opus | 5 | ~$0.35-0.65 |
+| **standard** | *(default)* | 4 (Cassandra + Mies+ + Sentinel + Echo) | 3 (all Opus) | 1 Opus | 8 | ~$0.70-1.20 |
+| **standard --no-review** | `--no-review` | 4 (same) | 0 | 1 Opus | 5 | ~$0.35-0.65 |
 | **deep** | `--mode deep` | 6 (4 Opus + 2 Codex) | 3 (all Opus) | 1 Opus | 10 | ~$1.50-2.50 |
 
 Modifiers (combinable):
 - `--no-codex` -- the deep-mode Codex advisors (Mies+, Sentinel) run on Opus instead.
-- `--no-review` -- Skip peer review phase. Only meaningful with deep (reduces to 7 agents, ~$1.00).
+- `--no-review` -- Skip the peer-review phase. In **standard**: 8 -> 5 agents (~$0.35-0.65, the fast path). In **deep**: 10 -> 7 agents (~$1.00).
 
 **Minimum thresholds** -- formula: `ceil(N * 0.6)`, min 2:
 
 | Mode | Min Advisors | Min Reviewers |
 |------|-------------|---------------|
-| standard | 3 of 4 | -- |
+| standard | 3 of 4 | 2 of 3 (skipped under `--no-review`) |
 | deep | 4 of 6 | 2 of 3 (if reviewers active) |
 
 **Mode resolution:** Two modes + modifiers:
@@ -179,9 +181,10 @@ Estimated: {{TIME}}, {{COST}}.
 
 Alternatives:
   {{IF standard}} --mode deep -> 10 agents, ~$1.50-2.50, ~2 min (escalate)
-  {{IF deep}} (no flags) -> standard: 5 agents, ~$0.35-0.65, ~1 min (reduce)
+  {{IF standard}} --no-review -> 5 agents, ~$0.35-0.65, ~1 min (fast 4-advisor path)
+  {{IF deep}} (no flags) -> standard: 8 agents, ~$0.70-1.20, ~2 min (reduce)
   --no-codex       -> Codex advisors run on Opus instead
-  --no-review      -> skip peer review (deep only, reduces to 7 agents)
+  --no-review      -> skip peer review (standard: 8->5 agents; deep: 10->7 agents)
 
 Proceed? [Y/n/{{IF standard}}deep{{ELSE}}standard{{ENDIF}}]
 ```
@@ -482,7 +485,7 @@ Print structured output status: `[Hydra] {{Name}}: {{valid_structured|valid_pros
 
 ### Step 4: Peer Review (parallel)
 
-**Skip entirely** if mode has no review phase (standard, or deep --no-review).
+**Skip entirely** only under `--no-review` (in standard or deep). Otherwise the review phase runs in BOTH standard (reviewers see advisors A, B, E, F) and deep (A-F).
 
 Read `references/review-protocol.md` for the full protocol.
 
@@ -567,7 +570,7 @@ Use structured output JSON fields (`file`, `lines`, `title`) when available, fal
 extraction. Severity is NOT part of the key; this avoids treating the same issue reported at
 SERIOUS by Cassandra and MODERATE by Navigator as two distinct findings.
 
-**Mode-aware label thresholds** (standard lacks reviewers + cross-model, so thresholds are lower):
+**Mode-aware label thresholds** (standard now runs reviewers but still lacks deep's cross-model Codex diversity, so its confidence ceiling — and thus thresholds — stay lower than deep's):
 - Standard: HIGH >= 60, MEDIUM >= 30, LOW < 30
 - Deep: HIGH >= 75, MEDIUM >= 40, LOW < 40
 

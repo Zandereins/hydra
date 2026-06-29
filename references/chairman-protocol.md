@@ -248,14 +248,15 @@ MODE ADAPTATION (orchestrator processes template before sending):
    - `{{MIES_PLUS_MODEL}}`: "Codex" (deep without --no-codex) or "Opus" (standard, or --no-codex)
    - `{{SENTINEL_MODEL}}`: "Codex" (deep without --no-codex) or "Opus" (standard, or --no-codex)
    - `{{ADVISOR_COUNT}}`: 4 (standard) or 6 (deep)
-   - `{{REVIEWER_COUNT}}`: 0 (standard, or deep --no-review) or 3 (deep)
+   - `{{REVIEWER_COUNT}}`: 3 when the review phase ran (standard or deep) or 0 (under `--no-review`)
 3. **Opening line** (first sentence after "You are the Chairman"):
-   - standard: "Synthesize 4 advisors (Opus), no reviewers, into a final verdict."
+   - standard: "Synthesize 4 advisors (Opus) and 3 reviewers into a final verdict."
+   - standard --no-review: "Synthesize 4 advisors (Opus), no reviewers, into a final verdict."
    - deep: "Synthesize 6 advisors (4 Opus + 2 Codex) and 3 reviewers into a final verdict."
    - deep --no-review: "Synthesize 6 advisors (4 Opus + 2 Codex), no reviewers, into a final verdict."
    - deep --no-codex: "Synthesize 6 advisors (all Opus) and 3 reviewers into a final verdict."
    - deep --no-review --no-codex: "Synthesize 6 advisors (all Opus), no reviewers, into a final verdict."
-4. **Omit sections:** Remove PEER REVIEWS section if no reviewers (standard, or deep --no-review).
+4. **Omit sections:** Remove PEER REVIEWS section only under `--no-review` (standard or deep).
    Remove `**Cross-Model Signals:**` from verdict format if Opus-only (standard, or --no-codex).
 5. **Standard specifics:** Only include Cassandra/Mies+/Sentinel/Echo advisor sections. Consensus Map: 4 rows.
 ```

@@ -12,7 +12,7 @@ Create `.hydra/.gitignore` with `*` on first run.
 
 **Mode-aware section rules:**
 - Keep status table rows for excluded roles as `not run`. Omit their full response sections.
-- Omit `## Peer Reviews` entirely if no reviewers ran (standard, or deep --no-review).
+- Omit `## Peer Reviews` entirely if no reviewers ran (under `--no-review`, standard or deep).
 - Omit `### Cross-Model Signals` if Opus-only.
 - Omit `## Blind Spots` if no reviewers ran (blind spots come from reviewer labels).
 - Omit `## Decision Rationale` if no reviewers ran (chairman without reviewers produces simpler output).
