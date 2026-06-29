@@ -93,6 +93,12 @@ evidence_label (VERIFIED|HYPOTHESIS), hypothesis_confidence (one of "HIGH", "MED
 decisions), lines (range "N-M" or null), chain (object with file_line, code_construct,
 assumption, failure_mode, impact -- set any unfillable field to null, do NOT omit keys).
 
+SEVERITY ENUM (strict): `severity` MUST be EXACTLY one of `CATASTROPHIC`, `SERIOUS`, `MODERATE`
+(uppercase, in BOTH the prose and the JSON). `critical`, `high`, `medium`, `low`, `info`,
+`MINOR`, `TRIVIAL` are NOT valid advisor severities -- never emit them; map to the nearest of
+the three (`critical`->CATASTROPHIC, `high`->SERIOUS, `medium`/`low`->MODERATE). The
+`HIGH`/`MEDIUM`/`LOW` scale belongs ONLY to `hypothesis_confidence`, never to `severity`.
+
 Example (structure only -- do NOT copy content):
 ---HYDRA-STRUCTURED [abc123]---
 {"advisor":"cassandra","position":"CONCERN","scope_relevance":"IN_SCOPE","findings":[{"id":"C-1","title":"Null deref on empty input","severity":"SERIOUS","evidence_label":"VERIFIED","hypothesis_confidence":null,"file":"src/main.py","lines":"42-45","chain":{"file_line":"src/main.py:42-45","code_construct":"dict lookup without key check","assumption":"input is non-empty","failure_mode":"KeyError on empty dict","impact":"500 error on API call"}}]}
