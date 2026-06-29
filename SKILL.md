@@ -62,7 +62,7 @@ Modifiers (combinable):
 - No flags -> **standard**
 - `--mode deep` -> **deep**
 - `--no-codex` -> modifier (Codex advisors run on Opus)
-- `--no-review` -> modifier (skip peer review; only meaningful with deep)
+- `--no-review` -> modifier (skip peer review; in **standard** = the fast 4-advisor path, in deep reduces to 7 agents)
 
 Legacy aliases (emit migration hint):
 - `--mode lite`, `--mode quick`, `--mode full`, `--mode broad`, `--mode secure`, `--mode focused` -> `[Hydra] Unknown mode. Use 'standard' (default) or '--mode deep'.`
@@ -285,7 +285,11 @@ For `hydra pr`, also build `[SECTION:pr_context]` from the pull request's title 
 For `hydra this`: no windowing. Use full `[SECTION:source_code]` as before.
 
 **Set `IS_WINDOWED`:** After context construction, set `IS_WINDOWED = true` if `[SECTION:diff_context]`
-was used (branch/iterate/pr), `false` otherwise. This variable is consumed by confidence calibration
+was used (branch/iterate/pr), `false` otherwise. **Empty-base fallback:** if base resolution failed
+(the `[Hydra] Could not resolve a base branch` path above), do NOT proceed with an empty diff --
+build `[SECTION:source_code]` for the reviewed files instead (as in `hydra this`) and set
+`IS_WINDOWED = false`, so advisors review full file content rather than nothing (prevents a
+zero-finding unanimous HIGH on a no-op review). This variable is consumed by confidence calibration
 in Step 5.
 
 **Scope metrics** (computed when `IS_WINDOWED = true`, used by report-template + in-conversation summary):
@@ -726,11 +730,13 @@ chmod 600 .hydra/state.json
    **Write findings sidecar (machine-readable, for the bench):** Also write
    `.hydra/reports/hydra-{TIMESTAMP}-{SLUG}.findings.json` (chmod 600) — the FULL finding set
    (every Action/finding, not just the top_actions shown to the human), one object per finding
-   shaped exactly as an `AdvisorFinding` (emit ONLY these keys, no extras):
+   shaped exactly as an `AdvisorFinding` (emit ONLY these keys, no extras; `severity` uses the
+   3-rung advisor enum CATASTROPHIC|SERIOUS|MODERATE — the broader MINOR|TRIVIAL rungs exist only
+   in the system/bench severity domain via tool demotion and are never emitted by advisors):
    ```json
    {"schema_version": "1.0", "findings": [
      {"id": "A1", "title": "<one-line>",
-      "severity": "CATASTROPHIC|SERIOUS|MODERATE|MINOR|TRIVIAL",
+      "severity": "CATASTROPHIC|SERIOUS|MODERATE",
       "evidence": "VERIFIED|HYPOTHESIS_HIGH|HYPOTHESIS_MEDIUM|HYPOTHESIS_LOW",
       "position": "APPROVE|CONCERN|REJECT", "file": "path or null", "lines": "47-62 or null",
       "issue_class": "<one of the IssueClass values>",
