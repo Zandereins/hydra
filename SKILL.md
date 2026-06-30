@@ -429,7 +429,7 @@ below (shell state does not persist between tool calls — same rule as `CODEX_S
 
 Write prompt files via Write tool to `$HYDRA_TMP/prompt-mies_plus.md` and `$HYDRA_TMP/prompt-sentinel.md`.
 
-Then for each Codex advisor (one Bash call per advisor, set Bash tool timeout to 90000ms):
+Then for each Codex advisor (one Bash call per advisor, set Bash tool timeout to 170000ms):
 
 ```bash
 HYDRA_TMP="{{HYDRA_TMP_PATH}}"
@@ -441,14 +441,18 @@ TARGET_ROOT="{{TARGET_ROOT}}"   # repo root of the review target (Step 1); roots
 # A scalar string expanded unquoted ($TIMEOUT_CMD) is NOT word-split under the
 # Bash tool's zsh, so it collapses to a single "command not found" token (exit 127)
 # in EVERY branch -> node never launches and deep mode silently degrades to Opus-only.
-# 80s internal guard stays < the 90000ms Bash-tool timeout so the guard fires first
-# and HYDRA_STATUS remains catchable.
+# 150s internal guard: measured GPT-5.4 high-effort latency on a ~300-line review is
+# ~67-90s+ with high run-to-run variance, so an 80s budget straddled the mean and timed
+# out spuriously even after the no-explore guard removed all wandering. 150s gives ~2x
+# headroom over the observed completion; it stays < the 170000ms Bash-tool timeout so the
+# internal guard fires first and HYDRA_STATUS stays catchable. The sequential 2-Codex worst
+# case (~5min) is bounded by the circuit breaker + the Opus re-spawn cascade above.
 if command -v gtimeout >/dev/null 2>&1; then
-  TIMEOUT_CMD=(gtimeout 80)
+  TIMEOUT_CMD=(gtimeout 150)
 elif command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_CMD=(timeout 80)
+  TIMEOUT_CMD=(timeout 150)
 else
-  TIMEOUT_CMD=(perl -e 'alarm shift; exec @ARGV' 80)
+  TIMEOUT_CMD=(perl -e 'alarm shift; exec @ARGV' 150)
 fi
 
 "${TIMEOUT_CMD[@]}" node "$CODEX" task \
