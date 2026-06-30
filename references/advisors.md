@@ -99,6 +99,14 @@ SEVERITY ENUM (strict): `severity` MUST be EXACTLY one of `CATASTROPHIC`, `SERIO
 the three (`critical`->CATASTROPHIC, `high`->SERIOUS, `medium`/`low`->MODERATE). The
 `HIGH`/`MEDIUM`/`LOW` scale belongs ONLY to `hypothesis_confidence`, never to `severity`.
 
+POSITION ENUM (strict): `position` MUST be EXACTLY one of `APPROVE`, `CONCERN`, `REJECT`
+(uppercase, in BOTH the prose POSITION line and the JSON). Verdict-flavored synonyms like
+`SOUND`, `SOLID`, `PASS`, `OK`, `LGTM`, `APPROVED`, `WARN`, `CAUTION`, `NEEDS_WORK`, `BLOCK`,
+`FAIL`, `REJECTED` are NOT valid -- never emit them; map to the nearest of the three
+(`SOUND`/`SOLID`/`PASS`/`OK`/`LGTM`/`APPROVED`->APPROVE; `WARN`/`CAUTION`/`NEEDS_WORK`->CONCERN;
+`BLOCK`/`FAIL`/`REJECTED`->REJECT). APPROVE = no findings above MODERATE and fewer than 5
+MODERATE; CONCERN = any SERIOUS finding OR 5+ MODERATE; REJECT = CATASTROPHIC or unresolvable risk.
+
 Example (structure only -- do NOT copy content):
 ---HYDRA-STRUCTURED [abc123]---
 {"advisor":"cassandra","position":"CONCERN","scope_relevance":"IN_SCOPE","findings":[{"id":"C-1","title":"Null deref on empty input","severity":"SERIOUS","evidence_label":"VERIFIED","hypothesis_confidence":null,"file":"src/main.py","lines":"42-45","chain":{"file_line":"src/main.py:42-45","code_construct":"dict lookup without key check","assumption":"input is non-empty","failure_mode":"KeyError on empty dict","impact":"500 error on API call"}}]}
