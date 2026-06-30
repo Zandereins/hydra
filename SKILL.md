@@ -121,9 +121,11 @@ Note: focus flags for Volta or Navigator auto-escalate to deep mode when used wi
    If Top Actions AND timestamp are missing: report is invalid, fall back to fresh review.
 
    **State file (preferred):** If `.hydra/state.json` exists, use it instead of parsing
-   the markdown report. Schema: `{version: 2, latest: {report_path, timestamp_unix,
+   the markdown report. Schema: `{version: 2, latest: {report_path, timestamp_unix, head_sha,
    top_actions[], verdict_lead, mode, reviewed_files[]}}`. Written by Step 6 after each
-   successful review. Falls back to `ls -1t` + markdown parsing if state.json is absent.
+   successful review. On iterate, read `head_sha` as `PREV_HEAD_SHA` (preferred diff anchor,
+   see Step 1) and `timestamp_unix` for the age line. Falls back to `ls -1t` + markdown parsing
+   if state.json is absent; old state without `head_sha` cleanly falls back to the timestamp anchor.
 
    **State file version check:** If `version` field is missing or not equal to 2, warn
    user and fall back to markdown parsing. Do not silently use incompatible schema.
@@ -242,6 +244,17 @@ if [[ -n "$PREV_TIMESTAMP" && ! "$PREV_TIMESTAMP" =~ ^[0-9]{8}T[0-9]{6}$ ]]; the
   unset PREV_TIMESTAMP
 fi
 
+# PREV_HEAD_SHA (state.json `latest.head_sha`, written by Step 6) is the PREFERRED iterate
+# anchor -- an immutable commit beats the reflog-by-date `@{...}` form, which silently diffs
+# against the OLDEST reflog entry on fresh clones / post-gc / CI (empty reflog). Tamper-guard
+# it BEFORE interpolation (state.json is an untrusted surface), then confirm it is a real commit.
+if [[ -n "$PREV_HEAD_SHA" && ! "$PREV_HEAD_SHA" =~ ^[0-9a-f]{7,40}$ ]]; then
+  echo "[Hydra] Invalid PREV_HEAD_SHA -- ignoring" >&2; unset PREV_HEAD_SHA
+fi
+if [[ -n "$PREV_HEAD_SHA" ]] && ! git cat-file -e "${PREV_HEAD_SHA}^{commit}" 2>/dev/null; then
+  echo "[Hydra] PREV_HEAD_SHA not present (rebased/squashed/shallow) -- ignoring" >&2; unset PREV_HEAD_SHA
+fi
+
 # hydra branch / hydra pr: hunks against the base branch (`--` separator enforces pathspec).
 # Resolve the base robustly so a non-`main` default branch (e.g. axios uses `v1.x`) or a
 # gitflow `develop` repo is never mis-detected into a silent empty diff: prefer the PR's own
@@ -264,8 +277,16 @@ else
   git diff -U30 "$BASE"...HEAD -- "${reviewed_files[@]}"
 fi
 
-# hydra iterate: hunks since previous report (PREV_TIMESTAMP already validated above)
-git diff -U30 "@{$PREV_TIMESTAMP}" -- "${reviewed_files[@]}"
+# hydra iterate: hunks since the previous report. Prefer the immutable PREV_HEAD_SHA; fall
+# back to the reflog-by-date form only if no valid SHA is available; if neither resolves,
+# do a full-file review (build [SECTION:source_code], IS_WINDOWED=false) rather than a garbage diff.
+if [ -n "$PREV_HEAD_SHA" ]; then
+  git diff -U30 "$PREV_HEAD_SHA"...HEAD -- "${reviewed_files[@]}"
+elif [ -n "$PREV_TIMESTAMP" ]; then
+  git diff -U30 "@{$PREV_TIMESTAMP}" -- "${reviewed_files[@]}"
+else
+  echo "[Hydra] No valid iterate anchor (head_sha/timestamp) -- falling back to full-file review." >&2
+fi
 ```
 
 `-U30` provides 30 lines of surrounding context per hunk -- no post-processing needed.
@@ -377,20 +398,34 @@ Batch 1 (dispatch all simultaneously):
   - Bash tool: Codex Mies+ (see below)
 
 After Mies+ Bash returns:
-  If Mies+ TIMED OUT (exit 124):
-    - Spawn Sentinel as Opus via Agent tool (skip sequential Codex slot).
-      Increment CODEX_FAILURES. Use same Sentinel prompt, route through Agent tool
-      with `model: "opus"`. Set {{SENTINEL_MODEL}} = "Opus".
+  If Mies+ HYDRA_STATUS=TIMEOUT (exit 124/142/143) or INVALID (circuit breaker still CLOSED):
+    - Re-spawn Mies+ ON OPUS via Agent tool (`model: "opus"`, same Mies+ prompt) so its
+      perspective is recovered, not dropped. Set {{MIES_PLUS_MODEL}} = "Opus".
+    - Also spawn Sentinel as Opus via Agent tool (skip its sequential Codex slot), since a
+      slow Codex endpoint will likely time it out too. Set {{SENTINEL_MODEL}} = "Opus".
+    - Increment CODEX_FAILURES.
   Else:
-    - Bash tool: Codex Sentinel (see below)
+    - Bash tool: Codex Sentinel (see below). If Sentinel then returns HYDRA_STATUS=TIMEOUT/INVALID
+      (circuit still CLOSED), re-spawn Sentinel on Opus (`model: "opus"`, same prompt;
+      set {{SENTINEL_MODEL}} = "Opus") — it is the last sequential slot, so without this its
+      lens (security on a SECURITY_AUDIT) would be lost entirely. Drop a perspective only if
+      the Opus re-spawn also fails.
 ```
 
 **Codex invocation per advisor** (each is a separate Bash tool call):
 
-First, create temp dir (separate Bash call):
+First, create temp dir AND resolve the review-target root (separate Bash call):
 ```bash
 HYDRA_TMP=$(mktemp -d "${TMPDIR:-/tmp}/hydra-XXXXXX") && chmod 700 "$HYDRA_TMP" && echo "$HYDRA_TMP"
+# TARGET_ROOT: the repo root of the code under review, used as Codex's --cwd so its
+# read-only sandbox roots at the review target (cross-repo: review files live in repo B
+# while /hydra is invoked from repo A). Derive it from the directory Hydra ALREADY read
+# the source from (that path provably resolved). Replace {{SOURCE_DIR}} with the dir of a
+# reviewed file (absolute, or relative to the caller cwd); the `|| pwd` keeps non-git targets working.
+TARGET_ROOT=$(git -C "{{SOURCE_DIR}}" rev-parse --show-toplevel 2>/dev/null || pwd) && echo "$TARGET_ROOT"
 ```
+Store the resolved `TARGET_ROOT` and hardcode it as `{{TARGET_ROOT}}` in the Codex Bash calls
+below (shell state does not persist between tool calls — same rule as `CODEX_SCRIPT_PATH`).
 
 Write prompt files via Write tool to `$HYDRA_TMP/prompt-mies_plus.md` and `$HYDRA_TMP/prompt-sentinel.md`.
 
@@ -399,23 +434,33 @@ Then for each Codex advisor (one Bash call per advisor, set Bash tool timeout to
 ```bash
 HYDRA_TMP="{{HYDRA_TMP_PATH}}"
 CODEX="{{CODEX_SCRIPT_PATH}}"
+TARGET_ROOT="{{TARGET_ROOT}}"   # repo root of the review target (Step 1); roots Codex's read-only sandbox at the code under review, not the caller's cwd
 
-# Timeout: gtimeout (brew coreutils) > timeout (linux) > perl fallback
+# Timeout: gtimeout (brew coreutils) > timeout (linux) > perl fallback.
+# Build the wrapper as an ARRAY and expand it word-safe ("${TIMEOUT_CMD[@]}").
+# A scalar string expanded unquoted ($TIMEOUT_CMD) is NOT word-split under the
+# Bash tool's zsh, so it collapses to a single "command not found" token (exit 127)
+# in EVERY branch -> node never launches and deep mode silently degrades to Opus-only.
+# 80s internal guard stays < the 90000ms Bash-tool timeout so the guard fires first
+# and HYDRA_STATUS remains catchable.
 if command -v gtimeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="gtimeout 60"
+  TIMEOUT_CMD=(gtimeout 80)
 elif command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="timeout 60"
+  TIMEOUT_CMD=(timeout 80)
 else
-  TIMEOUT_CMD="perl -e 'alarm(60); exec @ARGV' --"
+  TIMEOUT_CMD=(perl -e 'alarm shift; exec @ARGV' 80)
 fi
 
-$TIMEOUT_CMD node "$CODEX" task \
+"${TIMEOUT_CMD[@]}" node "$CODEX" task \
+  --cwd "$TARGET_ROOT" \
   --prompt-file "$HYDRA_TMP/prompt-{{ADVISOR_NAME}}.md" \
   --effort {{EFFORT_LEVEL}} \
   > "$HYDRA_TMP/output-{{ADVISOR_NAME}}.txt" 2>"$HYDRA_TMP/stderr-{{ADVISOR_NAME}}.txt"
 EXIT_CODE=$?
 
-if [ $EXIT_CODE -eq 124 ]; then
+# Timeout codes: GNU gtimeout/timeout=124, perl-alarm fallback (SIGALRM)=142,
+# Bash-tool SIGTERM kill=143. Classify all three as TIMEOUT.
+if [ $EXIT_CODE -eq 124 ] || [ $EXIT_CODE -eq 142 ] || [ $EXIT_CODE -eq 143 ]; then
   echo "HYDRA_STATUS=TIMEOUT"
 elif [ $EXIT_CODE -ne 0 ]; then
   echo "HYDRA_STATUS=ERROR_$EXIT_CODE"
@@ -440,7 +485,8 @@ if grep -qi "401\|403\|not authenticated\|unauthorized\|login\|ENOENT" "$HYDRA_T
 fi
 ```
 If auth error detected: increment `CODEX_FAILURES`, skip next Codex call immediately.
-If timeout (exit 124): increment `CODEX_FAILURES` but still attempt next Codex call (transient).
+If HYDRA_STATUS=TIMEOUT (exit 124/142/143): increment `CODEX_FAILURES`, re-spawn that advisor on
+Opus per the cascade rule above, and still attempt the next Codex call (transient).
 If other error: increment `CODEX_FAILURES`, attempt next Codex call.
 
 All advisors dispatched in parallel (Opus) and sequentially (Codex, but overlapping with Opus).
@@ -712,6 +758,7 @@ chmod 600 .hydra/state.json
      "latest": {
        "report_path": ".hydra/reports/hydra-{TIMESTAMP}-{SLUG}.md",
        "timestamp_unix": {UNIX_EPOCH},
+       "head_sha": "{GIT_HEAD_SHA}",
        "top_actions": [
          {"id": "A1", "severity": "CATASTROPHIC", "file": "path", "lines": "47-62", "effort": "S", "summary": "action text"}
        ],
@@ -725,6 +772,7 @@ chmod 600 .hydra/state.json
    ```
    Extract `top_actions` from chairman's SUMMARY BLOCK (including effort tags and file refs).
    Extract `reviewed_files` from file paths mentioned in advisor responses.
+   Set `{GIT_HEAD_SHA}` from `git rev-parse HEAD` (the immutable iterate anchor; empty string if not a git repo).
    If state.json write fails: warn, continue (the report is the primary artifact).
 
    **Write findings sidecar (machine-readable, for the bench):** Also write
@@ -732,7 +780,12 @@ chmod 600 .hydra/state.json
    (every Action/finding, not just the top_actions shown to the human), one object per finding
    shaped exactly as an `AdvisorFinding` (emit ONLY these keys, no extras; `severity` uses the
    3-rung advisor enum CATASTROPHIC|SERIOUS|MODERATE — the broader MINOR|TRIVIAL rungs exist only
-   in the system/bench severity domain via tool demotion and are never emitted by advisors):
+   in the system/bench severity domain via tool demotion and are never emitted by advisors).
+   **Derive the combined `evidence` field** from the advisor's two source fields (`evidence_label`
+   + `hypothesis_confidence`): `VERIFIED` if `evidence_label == VERIFIED`, else
+   `"HYPOTHESIS_" + hypothesis_confidence.upper()` — normalize the confidence case-insensitively to
+   HIGH|MEDIUM|LOW (so a lowercase `"medium"` yields `HYPOTHESIS_MEDIUM`, never an off-enum value;
+   absent/unrecognized → `HYPOTHESIS_LOW`):
    ```json
    {"schema_version": "1.0", "findings": [
      {"id": "A1", "title": "<one-line>",
