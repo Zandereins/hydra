@@ -510,7 +510,7 @@ Read `references/chairman-protocol.md` for verdict formats and the focused chair
 **Orchestrator pre-computation (PANEL SUMMARY):**
 Before choosing a verdict path, compute from advisor/reviewer outputs:
 
-1. **Position tally:** Count APPROVE/CONCERN/REJECT. Set `{{AGREE_COUNT}}` = most common count.
+1. **Position tally:** First **normalize** any non-canonical position an advisor emitted (defense-in-depth against model vocab drift): `sound`/`solid`/`pass`/`ok`/`lgtm`/`approved`->APPROVE, `warn`/`caution`/`needs_work`->CONCERN, `block`/`fail`/`rejected`->REJECT (case-insensitive); canonical positions are APPROVE|CONCERN|REJECT only. Then count APPROVE/CONCERN/REJECT. Set `{{AGREE_COUNT}}` = most common count.
 2. **Cross-model matches:** Opus finding + Codex finding matched by the unified finding-dedup key (same file + overlapping line range + same issue class; see deduplication rule below). Set `{{CROSS_MODEL_COUNT}}`. Opus-only: 0.
 3. **Verified count:** Count all `[VERIFIED]` labels. Set `{{VERIFIED_COUNT}}`.
 4. **Signal line:** CODE_REVIEW→"quality assessment", ARCHITECTURE_DECISION→"confidence level",
