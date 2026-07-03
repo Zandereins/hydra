@@ -42,6 +42,24 @@ mkdir -p "$STAGE/skills/hydra" "$STAGE/.claude-plugin"
 # D1 — assemble from the committed tree (untracked cruft physically cannot ship).
 git archive HEAD -- "${SURFACE[@]}" | tar -x -C "$STAGE/skills/hydra"
 
+# D5 — plugin.json: hardcoded description; no author.email; SHA-stamped version read from HEAD.
+PYVER="$(git show HEAD:pyproject.toml | sed -n 's/^version = "\(.*\)"$/\1/p')"
+if [ "$PYVER" != "2.0.0a0" ]; then
+  echo "ERROR: pyproject version drifted ($PYVER) — update the PEP440->SemVer translation in this script." >&2
+  exit 1
+fi
+SHA="$(git rev-parse --short HEAD)"
+cat > "$STAGE/.claude-plugin/plugin.json" <<JSON
+{
+  "name": "hydra",
+  "description": "Multi-perspective code review council: advisors analyze, reviewers cross-examine, chairman synthesizes verdict.",
+  "version": "2.0.0-alpha.0+g${SHA}",
+  "author": { "name": "Zandereins" },
+  "license": "MIT"
+}
+JSON
+python3 -m json.tool "$STAGE/.claude-plugin/plugin.json" >/dev/null  # JSON syntax gate
+
 # --- TEMPORARY publish (Tasks 2-3 insert manifest + gates ABOVE this line) ---
 rm -rf dist/hydra-plugin
 mkdir -p dist
