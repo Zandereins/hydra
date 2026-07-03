@@ -60,9 +60,35 @@ cat > "$STAGE/.claude-plugin/plugin.json" <<JSON
 JSON
 python3 -m json.tool "$STAGE/.claude-plugin/plugin.json" >/dev/null  # JSON syntax gate
 
-# --- TEMPORARY publish (Tasks 2-3 insert manifest + gates ABOVE this line) ---
+# D6.1 — exact inventory: exactly the 8 expected files, nothing more.
+expected="$(printf '%s\n' \
+  ".claude-plugin/plugin.json" \
+  "skills/hydra/SKILL.md" \
+  "skills/hydra/references/advisors.md" \
+  "skills/hydra/references/chairman-protocol.md" \
+  "skills/hydra/references/report-template.md" \
+  "skills/hydra/references/review-protocol.md" \
+  "skills/hydra/README.md" \
+  "skills/hydra/LICENSE" | sort)"
+actual="$(cd "$STAGE" && find . -type f | sed 's|^\./||' | sort)"
+if [ "$expected" != "$actual" ]; then
+  echo "ERROR: staged inventory does not match the expected 8 files." >&2
+  diff <(echo "$expected") <(echo "$actual") >&2 || true
+  exit 1
+fi
+
+# D7 — hygiene gate: PR-#24 regression class only (abs-path / OS-username / personal mail).
+# Idiom pinned: MUST be `if grep ...; then exit 1; fi` — a bare grep under set -e exits 1 on a CLEAN surface.
+if grep -RInE "(/Users/[A-Za-z]|/home/[a-z]|\b$(id -un)\b|[A-Za-z0-9._%+-]+@(gmail|gmx|web|outlook|proton|yahoo)\.[a-z]+)" "$STAGE"; then
+  echo "HYGIENE GATE FAILED — offenders above (abs-path / OS-username / personal e-mail must not ship)." >&2
+  exit 1
+fi
+
+# D8 — publish (two-step; local git-ignored dir) + print the optional BILLED test (no code path runs it).
 rm -rf dist/hydra-plugin
 mkdir -p dist
 mv "$STAGE" dist/hydra-plugin
 trap - EXIT
-echo "OK (partial): staged $(find dist/hydra-plugin -type f | wc -l | tr -d ' ') files"
+echo "OK: built dist/hydra-plugin ($(find dist/hydra-plugin -type f | wc -l | tr -d ' ') files), version 2.0.0-alpha.0+g${SHA}"
+echo "Validate offline (unbilled):     claude plugin validate dist/hydra-plugin"
+echo "Optional (BILLED, run manually): claude --plugin-dir dist/hydra-plugin   # live trigger-firing only"
