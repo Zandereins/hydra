@@ -28,6 +28,14 @@ Make Hydra installable as a Claude Code plugin. A single build script assembles 
 3. **Offline, deterministic, reproducible:** same HEAD → byte-identical `dist/`. No timestamps, `$HOME`, or hostname in any emitted file. **No billed model call anywhere in the script.**
 4. **Version:** `2.0.0-alpha.0+g<short-sha>` in `plugin.json` — valid SemVer 2.0 build metadata, **not** a bump; `pyproject.toml` alpha hold `2.0.0a0` untouched and read from HEAD (not the working tree).
 
+## Decisions (defaults set 2026-07-03 — pending Franz's confirmation)
+
+- **README:** ship the existing 319-line dev README as-is (YAGNI; a trimmed user-facing README is a trivial future add if/when actually published).
+- **`author.name`:** `Zandereins` (GH handle) — privacy-preserving, consistent with the noreply-alias / PR-#24 posture.
+- **LICENSE copyright:** keep `Franz Paul` (real name in an MIT copyright is standard and already public in the repo; changing it would touch the root LICENSE, violating zero-disruption). **Flagged:** this ships Franz's real name in the plugin; the hygiene gate does NOT catch it (name ≠ OS-username). Override → change the root LICENSE separately.
+- **Plugin dir name:** `hydra-plugin` (wrapper) — the skill itself is `skills/hydra`.
+- **Cut (override to re-add):** CI reproducibility check, `marketplace.json` stub (deferred until publishing is a real decision).
+
 ## Technical Decisions
 
 ### D1 — Assembly via `git archive HEAD`, not `cp`
@@ -47,7 +55,7 @@ One bash array of the 7 exact paths drives ALL of: archive pathspecs, dirty chec
 
 ### D5 — plugin.json: hardcoded description, handle-only author, fail-loud version, offline validate
 - **Description hardcoded** in the heredoc. Do NOT extract from the `SKILL.md` frontmatter: it is a multi-line folded YAML block containing double quotes — naive extraction emits invalid JSON. Accept the drift explicitly; it is one string.
-- **No `author.email`** — naive generators pull `git config user.email`; this repo's history already had a PII-email scrub.
+- **Concrete fields:** `name` = `hydra`, `author` = `{ "name": "Zandereins" }` (GH handle, privacy-preserving — see Decisions), `license` = `MIT`. **No `author.email`** — naive generators pull `git config user.email`; this repo's history already had a PII-email scrub.
 - **Version:** `PYVER=$(git show HEAD:pyproject.toml | sed -n 's/^version = "\(.*\)"$/\1/p')`; assert `PYVER == 2.0.0a0`, else fail loudly ("version drifted — update the PEP440→SemVer translation"); emit `2.0.0-alpha.0+g$(git rev-parse --short HEAD)`. Read from HEAD so the stamp cannot lie about provenance.
 - **Validate offline (unbilled):** `claude plugin validate dist/hydra-plugin` → expect exit 0. This confirms manifest acceptance. Note (verified): `validate` does **not** enforce the version format, so also keep `python3 -m json.tool` for JSON syntax and rely on our version being valid SemVer 2.0 by construction.
 
