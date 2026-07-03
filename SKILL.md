@@ -37,6 +37,18 @@ Standard mode runs 4 advisors + 3 reviewers + chairman on Opus (~$0.70-1.20); ad
 Reference files in `references/` define all prompts and protocols -- read them at the
 relevant step.
 
+**Use this skill when** you need architecture decisions, security audits,
+tradeoff analysis, pre-merge deep reviews, or "what am I missing" answers --
+anywhere multiple independent perspectives beat a single reviewer.
+**Do not use** for simple code generation, syntax fixes, single-file refactors,
+or factual lookups -- a council is waste there; use a direct edit or a single
+review instead.
+
+**Requires:** bash and git; deep mode additionally depends on the Codex CLI,
+and `gtimeout` (brew coreutils) improves subprocess timeout handling.
+Sessions are **safe to re-run**: every run writes a new timestamped report
+under `.hydra/` and never mutates the code under review.
+
 ---
 
 ## Modes

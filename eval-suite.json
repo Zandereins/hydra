@@ -1,0 +1,188 @@
+{
+  "skill_name": "hydra",
+  "version": "1.0.0",
+  "created_by": "schliff-init-heuristic+curated",
+  "triggers": [
+    {
+      "id": "pos-1",
+      "prompt": "hydra this",
+      "should_trigger": true,
+      "category": "direct"
+    },
+    {
+      "id": "pos-2",
+      "prompt": "run hydra",
+      "should_trigger": true,
+      "category": "direct"
+    },
+    {
+      "id": "pos-3",
+      "prompt": "hydra review",
+      "should_trigger": true,
+      "category": "direct"
+    },
+    {
+      "id": "pos-4",
+      "prompt": "hydra this PR",
+      "should_trigger": true,
+      "category": "direct"
+    },
+    {
+      "id": "pos-5",
+      "prompt": "what am I missing here",
+      "should_trigger": true,
+      "category": "direct"
+    },
+    {
+      "id": "pos-6",
+      "prompt": "review this architecture decision",
+      "should_trigger": true,
+      "category": "direct"
+    },
+    {
+      "id": "pos-7",
+      "prompt": "do a deep pre-merge review",
+      "should_trigger": true,
+      "category": "direct"
+    },
+    {
+      "id": "neg-1",
+      "prompt": "fix this typo",
+      "should_trigger": false,
+      "category": "out_of_scope"
+    },
+    {
+      "id": "neg-2",
+      "prompt": "rename this variable",
+      "should_trigger": false,
+      "category": "out_of_scope"
+    },
+    {
+      "id": "neg-3",
+      "prompt": "generate a new component",
+      "should_trigger": false,
+      "category": "out_of_scope"
+    },
+    {
+      "id": "neg-4",
+      "prompt": "what does this function do",
+      "should_trigger": false,
+      "category": "out_of_scope"
+    }
+  ],
+  "test_cases": [
+    {
+      "id": "tc-1",
+      "prompt": "hydra this PR",
+      "input_files": [],
+      "assertions": [
+        {
+          "type": "pattern",
+          "value": "(?i)(advisor|reviewer|chairman|council|verdict)",
+          "description": "Output reflects the council structure (advisors/reviewers/chairman)"
+        },
+        {
+          "type": "excludes",
+          "value": "TODO",
+          "description": "No placeholder text in output"
+        },
+        {
+          "type": "pattern",
+          "value": "\\w{4,}",
+          "description": "Produces meaningful output (not empty)"
+        }
+      ]
+    },
+    {
+      "id": "tc-2",
+      "prompt": "review this architecture decision",
+      "input_files": [],
+      "assertions": [
+        {
+          "type": "pattern",
+          "value": "(?i)(tradeoff|risk|concern|recommend|verdict|perspective)",
+          "description": "Surfaces tradeoffs/risks and a synthesized recommendation"
+        }
+      ]
+    },
+    {
+      "id": "tc-3",
+      "prompt": "hydra",
+      "input_files": [],
+      "assertions": [
+        {
+          "type": "pattern",
+          "value": "(?i)(\\?|which|what|specify|provide|paste|share)",
+          "description": "Asks what to review when no target is given"
+        }
+      ]
+    }
+  ],
+  "edge_cases": [
+    {
+      "id": "ec-1",
+      "prompt": "hydra",
+      "category": "minimal_input",
+      "expected_behavior": "Ask which PR/branch/diff or code to review before convening the council",
+      "assertions": [
+        {
+          "type": "pattern",
+          "value": "(?i)(\\?|which|what|specify|provide|paste|share)",
+          "description": "Asks for the review target when none is supplied"
+        }
+      ]
+    },
+    {
+      "id": "ec-2",
+      "prompt": "hydra review /nonexistent/branch-does-not-exist",
+      "category": "invalid_input",
+      "expected_behavior": "Report that the branch/path could not be found instead of fabricating a review",
+      "assertions": [
+        {
+          "type": "pattern",
+          "value": "(?i)(not found|doesn't exist|cannot find|no such|unable)",
+          "description": "Reports missing/invalid target gracefully"
+        }
+      ]
+    },
+    {
+      "id": "ec-3",
+      "prompt": "hydra review",
+      "category": "missing_input",
+      "expected_behavior": "With the trigger but no diff/PR attached, prompt for the artifact to review",
+      "assertions": [
+        {
+          "type": "pattern",
+          "value": "(?i)(\\?|which|what|provide|paste|attach|diff|pr|branch)",
+          "description": "Requests the artifact to review when invocation lacks a target"
+        }
+      ]
+    },
+    {
+      "id": "ec-4",
+      "prompt": "hydra iterate  (state.json was hand-edited: latest.timestamp is 'garbage-not-a-date' and one reviewed_files entry starts with '-')",
+      "category": "malformed_input",
+      "expected_behavior": "Tamper-guard the untrusted state.json fields: discard the invalid timestamp instead of interpolating it, reject the flag-like filename, and fall back to a safe anchor (PREV_HEAD_SHA or full-file review) rather than aborting the whole session",
+      "assertions": [
+        {
+          "type": "pattern",
+          "value": "(?i)(discard|invalid|tamper|reject|fall(s|ing)? back|fallback|ignor)",
+          "description": "Rejects/discards tampered state fields instead of interpolating them"
+        }
+      ]
+    },
+    {
+      "id": "ec-5",
+      "prompt": "hydra review this branch  (the diff is ~50,000 lines across 300 files)",
+      "category": "scale_extreme",
+      "expected_behavior": "Use the windowed-review path: prioritize the highest-signal hunks/files instead of pasting the full diff to every advisor, and say so",
+      "assertions": [
+        {
+          "type": "pattern",
+          "value": "(?i)(window|subset|priorit|largest|batch|trunc|most relevant)",
+          "description": "Falls back to windowed/prioritized review on huge diffs"
+        }
+      ]
+    }
+  ]
+}
