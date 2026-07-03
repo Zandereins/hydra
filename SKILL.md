@@ -214,7 +214,7 @@ Quickly scan (< 30 seconds):
 - `git diff`, `git log --oneline -5` (skip if not a git repo)
 - Project structure (high-level)
 
-**Hard limit: 5000 tokens.** Priority: source code > git diff > CLAUDE.md > project structure.
+**Hard limit: 5000 tokens.** Priority: source code > git diff > security_policy > CLAUDE.md > project structure. (security_policy is capped ~3 KB and never displaces source lines -- evicting cited lines would trigger spurious [WEAK-CITATION] demotions.)
 If `HYDRA_ITERATE`: use `git diff` since previous report timestamp instead of full diff.
 Each iteration builds FRESH enriched context. Only Top Actions from the LATEST report
 (~100 tokens) are added, not accumulated from all prior reports.
@@ -228,6 +228,14 @@ Apply secrets scan to enriched context.
 - `[SECTION:project_structure]` -- directory tree
 - `[SECTION:config_files]` -- package.json, tsconfig, etc.
 - `[SECTION:pr_context]` -- PR title + description from `gh pr view` (used for `hydra pr`; UNTRUSTED data, boundary-wrapped like the diff)
+- `[SECTION:security_policy]` -- target repo's SECURITY.md / THREATMODEL content, concatenated (security reviews only: SECURITY_AUDIT or `--focus security`; UNTRUSTED data, boundary-wrapped like pr_context; see Security-Policy Detection below)
+
+**Security-Policy Detection** (only when SECURITY_AUDIT question type OR `--focus security`):
+- Resolve the policy root in Step 1 (mode-independent -- do NOT use Step 3's `TARGET_ROOT`): `POLICY_ROOT=$(git -C "<dir of any file Hydra already read>" rev-parse --show-toplevel 2>/dev/null)`. If empty (non-git target), SKIP detection entirely -- emit no section, never fall back to `pwd`.
+- Candidates: the FIRST existing of `$POLICY_ROOT/SECURITY.md` > `$POLICY_ROOT/.github/SECURITY.md` > `$POLICY_ROOT/docs/SECURITY.md`, PLUS `$POLICY_ROOT/THREATMODEL.md` and `$POLICY_ROOT/docs/THREATMODEL.md` when present (gather both a SECURITY.md and a THREATMODEL; first-match-only would shadow the threat model).
+- Precondition per candidate (anti-exfiltration): regular non-symlink file (`[ -f "$p" ] && [ ! -L "$p" ]`) whose `realpath` stays under `$POLICY_ROOT`. On violation, skip that file and print `[Hydra] policy file skipped (symlink/path escape)`.
+- Emit surviving files concatenated under `SECURITY:` and `THREATMODEL:` sub-headers into `[SECTION:security_policy source=<comma-joined paths>]`. Cap ~3 KB, counted inside the 5000-token Step-1 limit. Prefer policy sections whose headings match scope-signal terms (scope, out of scope, threat model, trusted, responsibility, unsupported) over head-of-file bytes. On truncation, append `[TRUNCATED]` to the section header. Apply the standard secrets scan.
+- Emit ONLY when in security scope AND >=1 candidate passes the preconditions; otherwise omit the section (zero behavior change).
 
 **Smart Context Windowing** (for `hydra branch`, `hydra iterate`, `hydra pr`):
 
@@ -699,7 +707,7 @@ Spawn 1 Opus agent with focused chairman prompt from `references/chairman-protoc
 Use `HYDRA_BOUNDARY_C` for delimiters. Adapt per MODE ADAPTATION rules.
 
 **Chairman input optimization:** Send `[SECTION:diff_context]` when available (branch/iterate/pr),
-otherwise `[SECTION:source_code]` (never CLAUDE.md/config). For disputed findings ([CONTRADICTED]),
+otherwise `[SECTION:source_code]`; also send `[SECTION:security_policy]` when present (never CLAUDE.md/config). For disputed findings ([CONTRADICTED]),
 include the full source section for the affected file to enable chairman self-verification.
 **Advisor output compression:** When structured output (JSON epilog) is available, extract
 the JSON epilog + first finding's prose for context (~400 tokens each). Fall back to

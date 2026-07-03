@@ -392,6 +392,7 @@ FOR EACH FINDING:
 
 Only material findings. No style or speculative concerns.
 Prioritize depth — one well-evidenced finding beats three speculative ones. But report ALL material vulnerabilities.
+Report material findings even if the target repo's SECURITY.md/THREATMODEL declares the mechanism trusted-by-design or out of scope — scope calibration is the chairman's job, not yours.
 If safe: say so directly, return no findings.
 SCOPE: Failures caused by ADVERSARIAL input — malicious actors, untrusted data, permission bypasses.
 NOT YOURS: Operational failure chains/assumptions (Cassandra), performance (Volta), complexity removal and readability (Mies+), boundaries (Navigator).
