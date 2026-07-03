@@ -118,6 +118,23 @@ delta: what's fixed, what remains, what's new.
 [Codex CLI plugin](https://github.com/openai/codex-plugin-cc) (optional -- enables
 cross-model analysis, runs sequentially alongside Opus advisors)
 
+### Install as a plugin
+
+Prefer a Claude Code plugin over a skills-dir clone? Build a clean, self-contained
+plugin from the skill surface -- offline, reproducible, no dev tooling shipped:
+
+```bash
+# from a clone of this repo:
+bash scripts/build-plugin.sh                # assembles dist/hydra-plugin/ (8 files)
+claude plugin validate dist/hydra-plugin    # offline manifest check
+claude --plugin-dir dist/hydra-plugin       # load it into a session
+```
+
+The build ships only `SKILL.md` + `references/` + `README`/`LICENSE` (never the dev
+package, bench, or tests) and stamps the current commit into the plugin version.
+Free-text triggers (`hydra this`, `hydra review`, ...) fire exactly as with the
+skills-dir install.
+
 ---
 
 ## The Advisors
