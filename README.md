@@ -77,12 +77,12 @@ graph TD
 
     D1 & D2 & D3 & D4 & D5 & D6 --> E[All Advisor Outputs]
 
-    E -. standard mode .-> F
     E --> R1[Cross-Examiner -- Opus]
     E --> R2[Effort-Risk Ranker -- Opus]
     E --> R3[Devil's Advocate -- Opus]
+    E -. "--no-review" .-> F
 
-    subgraph review["Cross-Examination -- DEEP MODE ONLY, each reviewer sees ALL outputs"]
+    subgraph review["Cross-Examination -- standard and deep, skipped only under --no-review; each reviewer sees ALL outputs"]
         R1
         R2
         R3
@@ -93,7 +93,7 @@ graph TD
     G -. hydra iterate .-> B
 ```
 
-In standard mode (default), four advisors (Cassandra, Mies+, Sentinel, Echo) analyze independently on Opus and a chairman synthesizes the verdict -- no peer-review phase. In deep mode, six advisors run (four Opus in parallel, plus Mies+ and Sentinel on Codex sequentially), then three reviewers cross-examine all outputs (no advisor sees another's work, but every reviewer sees everything), then the chairman synthesizes. After fixes, `hydra iterate` re-enters the pipeline in standard mode, producing a delta of what changed. Costs and agent counts are summarised in the [Modes](#modes) table below.
+In standard mode (default), four advisors (Cassandra, Mies+, Sentinel, Echo) analyze independently on Opus, then three reviewers cross-examine all of their outputs, then a chairman synthesizes the verdict -- add `--no-review` for the fast advisors-plus-chairman path. In deep mode, six advisors run (four Opus in parallel, plus Mies+ and Sentinel on Codex sequentially) before the same three-reviewer cross-examination and chairman synthesis, adding two specialists and cross-model diversity. No advisor sees another's work, but every reviewer sees everything. After fixes, `hydra iterate` re-enters the pipeline in standard mode, producing a delta of what changed. Costs and agent counts are summarised in the [Modes](#modes) table below.
 
 ---
 
@@ -152,10 +152,10 @@ back to the advisor who raised it.
 | # | Name | Model | Core Question |
 |---|------|-------|---------------|
 | 1 | Cassandra | Opus | "How does this break at 3am?" -- compound failures, unguarded assumptions |
-| 2 | Mies+ | Codex | "What can be removed, and can a stranger follow it?" -- dead code, over-engineering, readability |
+| 2 | Mies+ | Opus / Codex | "What can be removed, and can a stranger follow it?" -- dead code, over-engineering, readability |
 | 3 | Navigator | Opus | "What depends on what?" -- coupling, boundary violations |
 | 4 | Volta | Opus | "What does this cost at 10x load?" -- N+1 queries, invisible costs |
-| 5 | Sentinel | Codex | "How do I break this on purpose?" -- auth gaps, injection, race conditions |
+| 5 | Sentinel | Opus / Codex | "How do I break this on purpose?" -- auth gaps, injection, race conditions |
 | 6 | Echo | Opus | "What did the AI get wrong?" -- phantom code, fake tests, plan-vs-diff drift |
 
 Mies+ uses a few-shot prompt format for Codex compatibility (deep mode). Top Actions
@@ -172,12 +172,13 @@ verdict.
 
 | Mode | CLI | Agents | Est. Cost |
 |------|-----|--------|-----------|
-| **standard** *(default)* | -- | 5 (4 advisors + chairman) | around $0.35-0.65 |
+| **standard** *(default)* | -- | 8 (4 advisors + 3 reviewers + chairman) | around $0.70-1.20 |
+| **standard --no-review** | `--no-review` | 5 (4 advisors + chairman) | around $0.35-0.65 |
 | **deep** | `--mode deep` | 10 (6 advisors + 3 reviewers + chairman) | around $1.50-2.50 |
 
 **Modifiers** (combinable with either mode):
 - `--no-codex` -- Codex advisors run on Opus instead
-- `--no-review` -- skip peer review (only meaningful with deep, reduces to 7 agents, around $1.00)
+- `--no-review` -- skip peer review (standard: 8 to 5 agents, the fast path around $0.35-0.65; deep: 10 to 7 agents, around $1.00)
 - `--transcript` -- save raw agent outputs separately
 
 **Focus flags:** `--focus security|perf|readability|architecture|reliability` -- includes the mapped advisor and prioritizes matching files in the diff budget (not a word-budget or weighting multiplier). Mapping: security to Sentinel, perf to Volta, readability to Mies+, architecture to Navigator, reliability to Cassandra. Flags for `perf` and `architecture` auto-escalate to deep mode (those advisors only exist in deep).
@@ -268,8 +269,8 @@ keep deep mode Anthropic-only as well. Hydra shows which providers receive your 
 and asks for confirmation before any agents run.
 
 Without the Codex plugin, Hydra runs all advisors on Opus. In standard mode that is
-4 advisors + chairman (5 agents). In deep mode, all 6 advisors + 3 reviewers + chairman
-(10 agents). Same perspectives -- just without cross-model diversity.
+4 advisors + 3 reviewers + chairman (8 agents). In deep mode, all 6 advisors + 3 reviewers
++ chairman (10 agents). Same perspectives -- just without cross-model diversity.
 
 ---
 
@@ -314,8 +315,9 @@ spawning agents.
 
 ## FAQ
 
-**How much does it cost?** Standard: around $0.35-0.65. Deep: around $1.50-2.50. These are API
-costs charged to your accounts. Hydra shows estimates before running.
+**How much does it cost?** Standard: around $0.70-1.20 (the fast `--no-review` path is around
+$0.35-0.65). Deep: around $1.50-2.50. These are API costs charged to your accounts. Hydra shows
+estimates before running.
 
 **Where are reports?** `.hydra/reports/` in your project root (gitignored). Run
 `hydra history` to list past reviews.
