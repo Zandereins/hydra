@@ -17,14 +17,24 @@ import secrets
 NONCE_HEX_LEN = 12
 _NONCE_RE = rf"[0-9a-f]{{{NONCE_HEX_LEN}}}"
 
+# Single owner of the KIND alphabet — the UNTRUSTED_RE detector and the wrap_untrusted
+# validator (_KIND_PATTERN) MUST derive from one source, exactly as the nonce width derives
+# from NONCE_HEX_LEN. Otherwise they drift: a kind wrap_untrusted accepts but UNTRUSTED_RE
+# cannot re-detect (e.g. a digit-bearing TOOL_OUTPUT_SHA256 / OSV_V2) yields a syntactically
+# valid wrapper that the boundary detector silently misses — the trusted-zone boundary fails
+# OPEN. First char excludes digits (identifier rule); later chars allow them. The close tag
+# still repeats the exact kind+nonce via backreference, so digits/underscores never create an
+# ambiguous parse that could shift the nonce.
+_KIND_RE_SRC = r"[A-Za-z_][A-Za-z0-9_]*"
+
 UNTRUSTED_RE = re.compile(
-    rf"<<UNTRUSTED_(?P<kind>[A-Za-z_]+)_(?P<nonce>{_NONCE_RE})>>"
+    rf"<<UNTRUSTED_(?P<kind>{_KIND_RE_SRC})_(?P<nonce>{_NONCE_RE})>>"
     r".*?"
     r"<<END_UNTRUSTED_(?P=kind)_(?P=nonce)>>",
     re.DOTALL,
 )
 
-_KIND_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_KIND_PATTERN = re.compile(rf"^{_KIND_RE_SRC}$")
 
 
 def mint_nonce() -> str:

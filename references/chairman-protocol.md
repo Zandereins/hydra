@@ -224,22 +224,12 @@ RULES:
 - **PROCESS NOTE** (optional, max 50 words, outside word limit):
   If you notice a systematic gap in the advisor panel -- something NO advisor caught that the source code reveals, or a question type that the current advisor set is poorly equipped for -- note it here. Format: **Process Note:** "No advisor evaluated [X] because [Y]." Omit if no gap is apparent.
 
-ITERATION MODE (orchestrator: include this section only when {{PREVIOUS_VERDICT}} is non-empty):
-
-You are reviewing code that was ALREADY reviewed. The user made changes based on the
-previous verdict. Your job: verify fixes, find regressions, surface new issues.
-
-Previous verdict:
-{{PREVIOUS_VERDICT}}
-
-After the verdict, produce a DELTA BLOCK (outside word limit, max 200 words):
-**Fixed:** [previous actions now resolved, with evidence]
-**Remaining:** [previous actions still present -- why?]
-**Regression:** [things that WERE working and now aren't -- highest priority]
-**New:** [findings not in previous review]
-**Drift:** [if changes go beyond original scope -- flag it]
-**Complexity Signal:** [if fix is significantly more complex than original issue warranted -- flag it]
-**Progress:** [X of Y previous actions addressed]
+ITERATION MODE: the orchestrator appends the iteration block per SKILL.md Step 5 — keyed on
+`{{TOP_ACTIONS_FROM_PREV_REPORT}}`, with the DELTA BLOCK spec (Fixed/Remaining/Regression/New/
+Drift/Complexity Signal/Progress). This file intentionally defines none. A second, differently-
+keyed block (on a `PREVIOUS_VERDICT` variable, braces intentionally omitted here so it is not
+mistaken for a live placeholder) lived here but was dead — the orchestrator never populated it,
+so it could only ever emit a literal token. Removed to keep Step 5 the sole owner.
 
 MODE ADAPTATION (orchestrator processes template before sending):
 

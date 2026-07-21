@@ -171,5 +171,14 @@ def run_semgrep(
         result.warnings.append(f"JSON parse failed: {exc}")
         return result
 
-    result.findings = parse_semgrep_json(raw, cwd)
+    # Graceful-degrade contract: valid JSON with an unexpected shape (a result item that is
+    # not a dict, or whose `start`/`extra` is not a dict) would raise AttributeError/TypeError
+    # out of parse_semgrep_json and defeat the "degrade on any failure" promise. One call-site
+    # guard covers all present and future shape drift; keep the warning DISTINCT from the
+    # JSON-decode branch so invalid-JSON and shape-drift stay separately diagnosable.
+    try:
+        result.findings = parse_semgrep_json(raw, cwd)
+    except Exception as exc:  # noqa: BLE001 — degrade on any parse-shape failure, never raise
+        result.skipped = True
+        result.warnings.append(f"semgrep output shape invalid: {exc!r}"[:200])
     return result

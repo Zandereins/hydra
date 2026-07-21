@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hydra.grounding as grounding
 from bench.runner.threshold_calibration import (
+    _f1_at,
     citation_ratio,
     is_likely_hallucination,
     load_grounding_labels,
@@ -50,6 +51,19 @@ def test_sweep_picks_separating_threshold_midpoint() -> None:
     result = sweep_over_ratios(scored, candidates=[round(0.1 * i, 2) for i in range(1, 10)])
     assert result.best_f1 == 1.0
     assert result.best_threshold == 0.5  # median of the perfect-separation plateau
+
+
+def test_sweep_returned_threshold_actually_achieves_best_f1() -> None:
+    # Non-contiguous best-F1 plateau: thresholds 0.2 and 0.5 both hit the max F1, but the
+    # midpoint 0.35 between them scores strictly lower. statistics.median([0.2, 0.5]) = 0.35
+    # froze a threshold that does NOT realize the claimed best_f1 — an internally inconsistent
+    # SweepResult. Invariant: the returned threshold must actually achieve best_f1.
+    # (0.15,F) knocks t=0.1 out of the plateau so it is exactly [0.2, 0.5] (even, with a
+    # lower-F1 dip at the 0.35 midpoint).
+    scored = [(0.25, True), (0.55, True), (0.35, False), (0.45, False), (0.15, False)]
+    candidates = [round(0.1 * i, 2) for i in range(1, 7)]  # 0.1 .. 0.6
+    result = sweep_over_ratios(scored, candidates=candidates)
+    assert _f1_at(scored, result.best_threshold) == result.best_f1
 
 
 def test_sweep_handles_imperfect_separation() -> None:
