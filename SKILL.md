@@ -147,10 +147,13 @@ Note: focus flags for Volta or Navigator auto-escalate to deep mode when used wi
    capture them (shell state does not persist between tool calls — hardcode the printed values
    into Steps 3/4/5, same rule as `CODEX_SCRIPT_PATH`):
    ```bash
-   gen_token() {  # 48-bit hex from a secure source; fail if none is available
-     openssl rand -hex 6 2>/dev/null \
-       || head -c 6 /dev/urandom | xxd -p 2>/dev/null \
-       || { echo "[Hydra] Cannot generate secure boundary token. Aborting." >&2; return 1; }
+   gen_token() {  # 12 hex chars (48-bit) from a secure source; empty/short output -> caller aborts
+     local t
+     t=$(openssl rand -hex 6 2>/dev/null || head -c 6 /dev/urandom 2>/dev/null | xxd -p 2>/dev/null)
+     # Validate LENGTH, not pipeline exit status: `xxd -p` returns 0 on empty stdin, so a bare
+     # `|| exit` could otherwise let an empty token through when both sources fail.
+     if [ "${#t}" -eq 12 ]; then printf '%s' "$t"; else
+       echo "[Hydra] Cannot generate secure boundary token. Aborting." >&2; return 1; fi
    }
    HYDRA_BOUNDARY_A="HYDRA-$(gen_token)-A" || exit 1   # advisor stage
    HYDRA_BOUNDARY_R="HYDRA-$(gen_token)-R" || exit 1   # reviewer stage

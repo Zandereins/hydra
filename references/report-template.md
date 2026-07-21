@@ -92,7 +92,7 @@ Priority order -- fix in sequence when dependencies exist:
 ## Consensus Map
 
 <!-- {{CONSENSUS_MAP}} is orchestrator-supplied (chairman-protocol.md "CONSENSUS MAP" rule +
-     SKILL.md Step 6 "Orchestrator handles: Consensus Map"); the chairman is explicitly
+     SKILL.md Step 5 "Orchestrator handles: Consensus Map"); the chairman is explicitly
      forbidden to produce it, so this placeholder is NOT chairman-owned despite its neighbours. -->
 
 | Advisor (Model) | Position | Key Finding | Evidence | Agrees With |
