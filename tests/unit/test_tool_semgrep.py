@@ -112,6 +112,29 @@ def test_run_semgrep_malformed_json_returns_skipped(
     assert any("JSON parse failed" in w for w in result.warnings)
 
 
+def test_run_semgrep_valid_json_wrong_shape_returns_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Graceful-degrade contract (run_semgrep docstring): parseable-but-wrong-shape semgrep
+    # JSON must degrade to skipped=True, never raise. Previously the parse_semgrep_json call
+    # site was unguarded, so a result item that is a str (or has a str `start`) raised an
+    # unhandled AttributeError out of run_semgrep. Two shapes cover top-level and nested drift.
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/local/bin/semgrep")
+    (tmp_path / "a.py").write_text("# fixture")
+
+    for bad_stdout in ('{"results": ["pwn"]}', '{"results": [{"start": "x", "extra": {}}]}'):
+
+        def fake_run_tool(*_a: object, _out: str = bad_stdout, **_k: object) -> SimpleNamespace:
+            return SimpleNamespace(returncode=0, stdout=_out, stderr="")
+
+        monkeypatch.setattr("hydra.phase1.tools.semgrep.run_tool", fake_run_tool)
+        result = run_semgrep(tmp_path, changed_files=["a.py"])
+        assert result.skipped is True, bad_stdout
+        assert any("shape" in w for w in result.warnings), bad_stdout
+        # Distinct from the JSON-decode branch so the two failure modes stay diagnosable.
+        assert not any("JSON parse failed" in w for w in result.warnings), bad_stdout
+
+
 # ---------------------------------------------------------------------------
 # A3-S1 / A3-S7 — argv injection + emitted-path containment hardening
 # ---------------------------------------------------------------------------
