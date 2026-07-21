@@ -85,6 +85,8 @@ When a focus flag is active it does two concrete things: (1) the mapped focus ad
 `{{FOCUS_NOTE_IF_ACTIVE}}` resolves to a one-line note naming the active focus and its mapped advisor (e.g. `Focus: security -> Sentinel (primary lens)`) when a focus flag is set, and to the empty string (line omitted) when none is set.
 Note: focus flags for Volta or Navigator auto-escalate to deep mode when used with standard (these advisors only exist in deep mode). Mies+ exists in both modes (readability focus) and never auto-escalates.
 
+**Reasoning effort (stakes-based).** Every Opus advisor, reviewer, and the chairman inherits the *session's* effort level — there is one dial, not a per-role one (per-subagent effort would require shipping agent-definition files; Hydra spawns advisors inline). For a maximum-stakes review (security audit, irreversible migration) raise it before running — `/config` -> effort, `CLAUDE_CODE_EFFORT_LEVEL=xhigh`, or `effortLevel` in settings.json — for deeper per-agent reasoning at higher usage; the default suits routine reviews. Conditional depth is already built in and needs no dial: Step 5 uses the no-LLM deterministic path on a clean unanimous panel and only spawns the chairman on disputes/SERIOUS+ findings. (Deep-mode Codex advisors already run at `--effort high` independently — Step 3 — so this dial governs the Opus agents.)
+
 ---
 
 ## How a Hydra Session Works
