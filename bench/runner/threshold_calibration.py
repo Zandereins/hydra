@@ -77,13 +77,27 @@ def sweep_over_ratios(
     scored: list[tuple[float, bool]], *, candidates: list[float] | tuple[float, ...]
 ) -> SweepResult:
     """Sweep candidate thresholds over pre-scored (ratio, is_grounded) pairs; pick the
-    F1-maximizing threshold. On a plateau of equal best F1, choose the median threshold
-    (most robust separation)."""
+    F1-maximizing threshold. On a plateau of equal best F1, prefer the median threshold
+    (most robust separation) — but only when that interpolated midpoint actually realizes
+    best_f1; otherwise fall back to a guaranteed plateau member."""
     table = [(t, _f1_at(scored, t)) for t in candidates]
     best_f1 = max((f1 for _, f1 in table), default=0.0)
     plateau = [t for t, f1 in table if abs(f1 - best_f1) < 1e-9]
-    # round to kill float-median artifacts (0.3249999..) so the frozen threshold is exact
-    best_threshold = round(float(statistics.median(plateau)), 4) if plateau else 0.0
+    if not plateau:
+        best_threshold = 0.0
+    else:
+        # median() interpolates on an even plateau (e.g. median([0.30,0.35])=0.325), which
+        # keeps the robust central separation the live CITATION_THRESHOLD relies on. But on a
+        # NON-contiguous plateau it can land in a lower-F1 dip (median([0.2,0.5])=0.35 scoring
+        # below both) — an internally inconsistent result claiming a best_f1 it does not reach.
+        # Keep the midpoint only when it genuinely achieves best_f1 (preserving today's frozen
+        # 0.325 with zero live-behavior change); else fall back to the plateau's position-median,
+        # a member that realizes best_f1 by construction.
+        midpoint = round(float(statistics.median(plateau)), 4)
+        if abs(_f1_at(scored, midpoint) - best_f1) < 1e-9:
+            best_threshold = midpoint
+        else:
+            best_threshold = plateau[len(plateau) // 2]
     return SweepResult(best_threshold=best_threshold, best_f1=best_f1, table=table)
 
 

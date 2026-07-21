@@ -45,6 +45,17 @@ def test_untrusted_re_matches_multiline_body() -> None:
     assert UNTRUSTED_RE.search(wrapped) is not None
 
 
+def test_untrusted_re_detects_every_kind_wrap_untrusted_accepts() -> None:
+    # Single-source contract: UNTRUSTED_RE's kind alphabet MUST accept every kind
+    # wrap_untrusted's validator (_KIND_PATTERN) accepts — including digit-bearing kinds
+    # (a future TOOL_OUTPUT_SHA256 / OSV_V2). If the detector's alphabet is narrower, a
+    # syntactically valid wrapper becomes silently undetectable and the trusted-zone
+    # boundary fails OPEN. Guards the run_nonce.py:21/27 alphabet drift.
+    for kind in ("TOOL_OUTPUT_SEMGREP", "SHA256", "OSV_V2", "PR_DIFF_V2", "TOOL_OUTPUT_OSV2"):
+        wrapped = wrap_untrusted(kind, _NONCE, "body")
+        assert UNTRUSTED_RE.search(wrapped) is not None, f"undetectable kind: {kind}"
+
+
 def test_wrap_untrusted_rejects_bad_kind() -> None:
     import pytest
     with pytest.raises(ValueError, match="kind must match"):

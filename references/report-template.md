@@ -7,7 +7,7 @@ Create `.hydra/.gitignore` with `*` on first run.
 
 **Status labels:**
 - `responded` -- advisor/reviewer completed successfully
-- `timeout` -- spawned but did not respond within 120s
+- `timeout` -- spawned but did not respond within its stage timeout (see SKILL.md Steps 3/4 for current values; do not restate the constant here — it has drifted before)
 - `not run` -- excluded by active mode (e.g., Navigator/Volta in standard mode)
 
 **Mode-aware section rules:**
@@ -91,9 +91,13 @@ Priority order -- fix in sequence when dependencies exist:
 
 ## Consensus Map
 
+<!-- {{CONSENSUS_MAP}} is orchestrator-supplied (chairman-protocol.md "CONSENSUS MAP" rule +
+     SKILL.md Step 5 "Orchestrator handles: Consensus Map"); the chairman is explicitly
+     forbidden to produce it, so this placeholder is NOT chairman-owned despite its neighbours. -->
+
 | Advisor (Model) | Position | Key Finding | Evidence | Agrees With |
 |-----------------|----------|-------------|----------|-------------|
-{{CHAIRMAN_CONSENSUS_MAP}}
+{{CONSENSUS_MAP}}
 
 Legend: Evidence = count of [VERIFIED] findings. Agrees With = advisor(s) who found the same issue.
 
@@ -174,6 +178,10 @@ Map question type to signal line:
 - ARCHITECTURE_DECISION -> CONFIDENCE level
 - SECURITY_AUDIT -> RISK LEVEL
 - DEBUGGING -> ROOT-CAUSE CONFIDENCE
+
+Default in-conversation output is Tier 1 per SKILL.md Step 7 (VERDICT + ACTIONS + report path,
+~10 lines). The CONFIDENCE / TENSION / INSIGHT fields shown below are the Tier-2 expansion,
+surfaced only on `hydra details` — SKILL.md Step 7 is the single source of truth for tiering.
 
 ```
 ## Hydra: {{TITLE}}
