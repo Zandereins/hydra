@@ -101,10 +101,10 @@ Note: focus flags for Volta or Navigator auto-escalate to deep mode when used wi
    Git/CI: `ghp_...`, `github_pat_...`, `glpat-...`,
    Slack: `xox[bpsa]-...`, `https://hooks.slack.com/...`,
    Stripe: `sk_live_`, `sk_test_`, `pk_live_`, `rk_live_`, `rk_test_`, `whsec_`,
-   AI keys: `sk-ant-`, `sk-proj-`, `AIzaSy`,
+   AI keys: `sk-ant-`, `sk-proj-`, `sk-[A-Za-z0-9]{20,}` (classic OpenAI; the hyphen-break stops it double-flagging `sk-ant-`/`sk-proj-`), `AIzaSy`,
    PEM: `-----BEGIN.*PRIVATE.*KEY-----`, `-----BEGIN.*KEY-----`,
    JWT: `eyJhbG...eyJ` (require header.payload, not just header prefix),
-   DB strings: `(mongodb|postgres|mysql|redis)://[^:]+:[^@]+@`,
+   DB strings: `(mongodb(\+srv)?|postgres|mysql|redis)://[^:]+:[^@]+@`,
    Datadog: `DD_API_KEY`, `DD_APP_KEY`,
    Twilio: `AC[a-f0-9]{32}`, `SK[a-f0-9]{32}`,
    Other: `AccountKey=`, `SG\.[a-zA-Z0-9_-]{22}\.`, `.env` contents.
@@ -141,22 +141,31 @@ Note: focus flags for Volta or Navigator auto-escalate to deep mode when used wi
 
    **State file version check:** If `version` field is missing or not equal to 2, warn
    user and fall back to markdown parsing. Do not silently use incompatible schema.
-6. **Generate boundary tokens** for delimiter security:
+6. **Generate boundary tokens** for delimiter security. Each stage token is an INDEPENDENT
+   random draw — a compromised advisor is shown its own stage token (A) and must not be able
+   to derive the reviewer (R) or chairman (C) tokens from it. Draw all three in one call and
+   capture them (shell state does not persist between tool calls — hardcode the printed values
+   into Steps 3/4/5, same rule as `CODEX_SCRIPT_PATH`):
    ```bash
-   HYDRA_BASE="$(openssl rand -hex 6)"
+   gen_token() {  # 48-bit hex from a secure source; fail if none is available
+     openssl rand -hex 6 2>/dev/null \
+       || head -c 6 /dev/urandom | xxd -p 2>/dev/null \
+       || { echo "[Hydra] Cannot generate secure boundary token. Aborting." >&2; return 1; }
+   }
+   HYDRA_BOUNDARY_A="HYDRA-$(gen_token)-A" || exit 1   # advisor stage
+   HYDRA_BOUNDARY_R="HYDRA-$(gen_token)-R" || exit 1   # reviewer stage
+   HYDRA_BOUNDARY_C="HYDRA-$(gen_token)-C" || exit 1   # chairman stage
+   HYDRA_SESSION="HYDRA-$(gen_token)" || exit 1         # non-secret per-run id (audit.log + report integrity); NOT a boundary token, so it is safe to write to disk
+   printf '%s\n%s\n%s\n%s\n' "$HYDRA_BOUNDARY_A" "$HYDRA_BOUNDARY_R" "$HYDRA_BOUNDARY_C" "$HYDRA_SESSION"
    ```
-   If `openssl` is unavailable: `HYDRA_BASE="$(head -c 6 /dev/urandom | xxd -p)"`.
-   If both fail: abort with `[Hydra] Cannot generate secure boundary token. Aborting.`
-
-   Derive per-stage tokens:
-   - `HYDRA_BOUNDARY_A="HYDRA-${HYDRA_BASE}-A"` (advisor stage)
-   - `HYDRA_BOUNDARY_R="HYDRA-${HYDRA_BASE}-R"` (reviewer stage)
-   - `HYDRA_BOUNDARY_C="HYDRA-${HYDRA_BASE}-C"` (chairman stage)
 
    Use `{{BOUNDARY}}` = `HYDRA_BOUNDARY_A` in advisor preambles (Step 3).
    Use `{{BOUNDARY}}` = `HYDRA_BOUNDARY_R` in reviewer delimiters (Step 4).
    Use `{{BOUNDARY}}` = `HYDRA_BOUNDARY_C` in chairman delimiters (Step 5).
-   This prevents advisor output from escaping reviewer/chairman delimiters.
+   Each stage token carries independent entropy, so possession of an earlier stage's token
+   (advisors always see A — needed to detect fake delimiters) yields nothing about R or C: an
+   injected advisor cannot forge the reviewer/chairman delimiters. The stage-letter suffix is a
+   human-readable label, not the security boundary — the independent 48-bit draw is.
 
    **Prompt Assembly Rule** (applies to Steps 3, 4, 5):
    When building ANY prompt for an agent (advisor, reviewer, chairman):
@@ -251,6 +260,10 @@ Construction of `[SECTION:diff_context]`:
 for f in "${reviewed_files[@]}"; do
   case "$f" in
     -*) echo "[Hydra] Refusing suspicious filename (leading dash): $f" >&2; exit 1 ;;
+    # Reject absolute paths and `..` as a full path COMPONENT (never as a substring, so a
+    # legitimate name like `a..b.ts` still passes). The char-class check below already blocks
+    # newline/metachar tricks; this closes the traversal/escape the validation was billed to stop.
+    /*|..|../*|*/../*|*/..) echo "[Hydra] Refusing path escape (absolute or .. component): $f" >&2; exit 1 ;;
   esac
   [[ "$f" =~ ^[A-Za-z0-9._/-]+$ ]] || {
     echo "[Hydra] Invalid filename in reviewed_files: $f -- aborting" >&2; exit 1
@@ -765,6 +778,12 @@ If slug is empty after sanitization, use `review`.
 
 **Directory setup (first run):**
 ```bash
+# Anti-exfiltration: refuse to write through a symlinked .hydra (or reports/) — mirrors the
+# Step 1 policy-detection symlink guard. Checking reports/ too closes the real-dir-with-
+# symlinked-subdir variant. Keep mkdir -p so legitimate re-runs on a real dir still work.
+for d in .hydra .hydra/reports; do
+  [ -L "$d" ] && { echo "[Hydra] $d is a symlink -- refusing to write. Aborting." >&2; exit 1; }
+done
 mkdir -p .hydra/reports && chmod 700 .hydra && chmod 700 .hydra/reports
 echo '*' > .hydra/.gitignore && chmod 600 .hydra/.gitignore
 ```
@@ -834,7 +853,7 @@ chmod 600 .hydra/state.json
 
    **Write audit log:** Append one JSONL line to `.hydra/audit.log`:
    ```json
-   {"timestamp":"{{ISO_TIMESTAMP}}","session_id":"HYDRA-{{BASE}}","mode":"{{MODE}}","is_windowed":{{IS_WINDOWED}},"scope_pct":{{SCOPE_PCT_OR_NULL}},"question_type":"{{TYPE}}","reviewed_files":[...],"advisors":[{"name":"Cassandra","model":"opus","status":"responded","position":"CONCERN"}],"reviewers":[{"number":1,"model":"opus","status":"responded"}],"chairman":{"model":"opus","status":"responded"},"verdict_position":"CONCERN","degradations":[],"report_path":"{{PATH}}","duration_seconds":{{N}},"iteration":false}
+   {"timestamp":"{{ISO_TIMESTAMP}}","session_id":"{{HYDRA_SESSION}}","mode":"{{MODE}}","is_windowed":{{IS_WINDOWED}},"scope_pct":{{SCOPE_PCT_OR_NULL}},"question_type":"{{TYPE}}","reviewed_files":[...],"advisors":[{"name":"Cassandra","model":"opus","status":"responded","position":"CONCERN"}],"reviewers":[{"number":1,"model":"opus","status":"responded"}],"chairman":{"model":"opus","status":"responded"},"verdict_position":"CONCERN","degradations":[],"report_path":"{{PATH}}","duration_seconds":{{N}},"iteration":false}
    ```
    **Template substitution rules** (apply to the audit.log JSON line, the state.json schema, and the report frontmatter):
    - `{{IS_WINDOWED}}` -> bareword `true` or `false` (unquoted JSON/YAML boolean, never the string `"true"`).
@@ -847,7 +866,7 @@ chmod 600 .hydra/state.json
    ```bash
    CHECKSUM=$(shasum -a 256 "$REPORT_PATH" | cut -d' ' -f1)
    # Prepend integrity line (checksum covers everything BELOW this line)
-   { echo "<!-- hydra-integrity: sha256:${CHECKSUM} session:HYDRA-${HYDRA_BASE} scope:body -->"; cat "$REPORT_PATH"; } > "${REPORT_PATH}.tmp" && mv "${REPORT_PATH}.tmp" "$REPORT_PATH"
+   { echo "<!-- hydra-integrity: sha256:${CHECKSUM} session:${HYDRA_SESSION} scope:body -->"; cat "$REPORT_PATH"; } > "${REPORT_PATH}.tmp" && mv "${REPORT_PATH}.tmp" "$REPORT_PATH"
    ```
    If `shasum` is unavailable: `openssl dgst -sha256 "$REPORT_PATH" | awk '{print $NF}'`.
    If both fail: skip integrity line (non-critical for local gitignored reports).
