@@ -12,7 +12,7 @@ description: >
   'hydra deep', 'Hydra starten',
   'hydra iterate', 'hydra re-review', 'hydra follow-up',
   'hydra history', 'hydra pr', 'hydra branch',
-  'hydra ?', 'hydra auto', 'fix #', 'verify',
+  'hydra ?', 'hydra auto', 'fix #', 'hydra verify',
   'hydra explain', 'hydra details', 'hydra tensions', 'hydra blind-spots'.
 ---
 
@@ -218,7 +218,7 @@ Alternatives:
   {{IF standard}} --mode deep -> 10 agents, ~USD 1.50-2.50, ~2 min (escalate)
   {{IF standard}} --no-review -> 5 agents, ~USD 0.35-0.65, ~1 min (fast 4-advisor path)
   {{IF deep}} (no flags) -> standard: 8 agents, ~USD 0.70-1.20, ~2 min (reduce)
-  --no-codex       -> Codex advisors run on Opus instead
+  {{IF deep}} --no-codex -> Codex advisors run on Opus instead
   --no-review      -> skip peer review (standard: 8->5 agents; deep: 10->7 agents)
 
 Proceed? [Y/n/{{IF standard}}deep{{ELSE}}standard{{ENDIF}}]
@@ -672,6 +672,14 @@ SERIOUS by Cassandra and MODERATE by Navigator as two distinct findings.
 **Mode-aware label thresholds** (standard now runs reviewers but still lacks deep's cross-model Codex diversity, so its confidence ceiling — and thus thresholds — stay lower than deep's):
 - Standard: HIGH >= 60, MEDIUM >= 30, LOW < 30
 - Deep: HIGH >= 75, MEDIUM >= 40, LOW < 40
+- **`--mode deep` with BOTH `--no-codex` AND `--no-review`: use the Standard thresholds.** This single
+  combination zeroes `cross_model` and `corroboration` at the same time, capping its ceiling at 70 --
+  which is exactly the ceiling the Standard thresholds are calibrated for, while Deep's 75 is calibrated
+  for a ceiling of 100. Without this line HIGH is arithmetically unreachable there for any review that
+  produces findings, even though the panel is six advisors rather than four (a six-advisor unanimity is
+  harder to reach than a four-advisor one, so that score is the stronger signal, not the weaker).
+  Applies to this combination ONLY -- do not generalise it: `deep --no-codex` alone (ceiling 85) and
+  `deep --no-review` alone (ceiling 100) both keep the Deep thresholds.
 
 **Zero-finding unanimous override:** If ALL of these hold:
 - `AGREE_COUNT == EXPECTED_ADVISORS` (unanimous)
@@ -915,7 +923,7 @@ If `HYDRA_ITERATE`, show the DELTA BLOCK instead (see report-template.md iterati
 **Post-review actions:**
 ```
 --- Next Steps ---
-  verify         -> run verification for Top Action #1
+  hydra verify   -> run verification for Top Action #1
   fix #N         -> implement Top Action N (with preview)
   hydra explain #N -> deep dive into finding N
   hydra details  -> show tensions, insight, cross-model signals
@@ -924,7 +932,15 @@ If `HYDRA_ITERATE`, show the DELTA BLOCK instead (see report-template.md iterati
 ---
 ```
 
-**`verify` trigger:** When user types `verify`:
+**Missing-state guard** (binds every trigger below that reads a previous review --
+`hydra verify`, `fix #N`, `hydra explain #N`, `hydra tensions`, `hydra blind-spots`): if neither
+`.hydra/state.json` nor any report under `.hydra/reports/` exists, print
+`[Hydra] No previous review found. Run 'hydra this' first.` and stop. Never fabricate a finding, a
+Top Action, or a report path to satisfy the trigger, and never start a review to satisfy it -- a
+review is only ever started by an explicit review trigger through the Step 0.9 cost confirmation.
+`hydra iterate` is the one deliberate exception: it falls back to a fresh review (Step 0.5).
+
+**`hydra verify` trigger:** When user types `hydra verify`:
 1. Read the Verify block from the latest report (via state.json or SUMMARY BLOCK).
 2. If Command: show command, ask `Run this? [Y/n]`. On confirm, execute and interpret output.
 3. If Test snippet: offer to create a temporary test file and run.

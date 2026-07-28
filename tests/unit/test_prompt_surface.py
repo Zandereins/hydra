@@ -109,6 +109,79 @@ def test_no_dollar_before_digit_in_shipped_documents() -> None:
         )
 
 
+# --- Confidence-ceiling reachability (SKILL.md Step 5) ------------------------------------------
+# Every documented mode/modifier combination must be able to reach its own HIGH threshold. The
+# combination `deep --no-codex --no-review` zeroes cross_model and corroboration at the same time,
+# capping its ceiling at 70 while Deep's HIGH is 75 -- so a review there could never earn the top
+# label however clean it was. Bisected: that hole existed from 2026-04-16, the commit that
+# introduced the numeric confidence system, through every one of the ~21 commits since.
+#
+# The constants are EXTRACTED from SKILL.md so they keep a single source and cannot drift from it;
+# only the formula's shape and the configuration list live here. Known scope limit, stated rather
+# than hidden: a seventh configuration added to SKILL.md stays uncovered until it is added below.
+CONFIGS: tuple[tuple[str, bool, bool, str], ...] = (
+    # label, cross_model available, corroboration available, mode whose thresholds apply
+    ("standard", False, True, "standard"),
+    ("standard --no-review", False, False, "standard"),
+    ("deep", True, True, "deep"),
+    ("deep --no-codex", False, True, "deep"),
+    ("deep --no-review", True, False, "deep"),
+    ("deep --no-codex --no-review", False, False, "deep"),
+)
+
+_CONSTANTS = {
+    "agreement": r"agreement\s+=.*\*\s*(\d+)",
+    "evidence": r"evidence\s+=\s*\(VERIFIED_COUNT.*\*\s*(\d+)",
+    "cross": r"cross_model\s+=\s*min\(CROSS_MODEL_COUNT \* \d+, (\d+)\)",
+    "corroboration": r"corroboration\s+=\s*min\(CORROBORATED_COUNT \* \d+, (\d+)\)",
+    "clamp": r"clamp\(raw_score, \d+, (\d+)\)",
+    "standard": r"- Standard: HIGH >= (\d+)",
+    "deep": r"- Deep: HIGH >= (\d+)",
+}
+
+# The Step-5 rule mapping the both-modifiers deep combination onto the Standard thresholds. Detected
+# rather than assumed: delete that rule from SKILL.md and this guard goes red again, which is the
+# point -- it enforces the rule's existence instead of restating its conclusion.
+_DEEP_BOTH_USES_STANDARD = re.compile(
+    r"BOTH `--no-codex` AND `--no-review`.*use the Standard thresholds"
+)
+
+
+def test_every_configuration_can_reach_its_high_threshold() -> None:
+    skill = SKILL.read_text()
+    const: dict[str, int] = {}
+    for name, pattern in _CONSTANTS.items():
+        match = re.search(pattern, skill)
+        assert match, (
+            f"could not extract '{name}' from SKILL.md Step 5 -- the confidence formula or the "
+            "threshold list was reformatted and this guard no longer reads it. Fix the pattern; "
+            "do not delete the test."
+        )
+        const[name] = int(match.group(1))
+
+    exception_present = bool(_DEEP_BOTH_USES_STANDARD.search(skill))
+    unreachable: list[str] = []
+    for label, cross, corroboration, mode in CONFIGS:
+        ceiling = min(
+            const["agreement"]
+            + const["evidence"]
+            + (const["cross"] if cross else 0)
+            + (const["corroboration"] if corroboration else 0),
+            const["clamp"],
+        )
+        applies = mode
+        if label == "deep --no-codex --no-review" and exception_present:
+            applies = "standard"
+        if ceiling < const[applies]:
+            unreachable.append(f"{label}: ceiling {ceiling} < {applies} HIGH {const[applies]}")
+
+    assert not unreachable, (
+        "HIGH is arithmetically unreachable in a documented configuration -- a review there can "
+        "never earn the top label however clean and fully verified it is:\n  "
+        + "\n  ".join(unreachable)
+    )
+
+
 def test_common_preamble_has_no_unresolved_placeholders() -> None:
     text = ADVISORS.read_text()
     for marker in (PREAMBLE_START, PREAMBLE_END):
