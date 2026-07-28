@@ -672,14 +672,12 @@ SERIOUS by Cassandra and MODERATE by Navigator as two distinct findings.
 **Mode-aware label thresholds** (standard now runs reviewers but still lacks deep's cross-model Codex diversity, so its confidence ceiling — and thus thresholds — stay lower than deep's):
 - Standard: HIGH >= 60, MEDIUM >= 30, LOW < 30
 - Deep: HIGH >= 75, MEDIUM >= 40, LOW < 40
-- **`--mode deep` with BOTH `--no-codex` AND `--no-review`: use the Standard thresholds.** This single
-  combination zeroes `cross_model` and `corroboration` at the same time, capping its ceiling at 70 --
-  which is exactly the ceiling the Standard thresholds are calibrated for, while Deep's 75 is calibrated
-  for a ceiling of 100. Without this line HIGH is arithmetically unreachable there for any review that
-  produces findings, even though the panel is six advisors rather than four (a six-advisor unanimity is
-  harder to reach than a four-advisor one, so that score is the stronger signal, not the weaker).
-  Applies to this combination ONLY -- do not generalise it: `deep --no-codex` alone (ceiling 85) and
-  `deep --no-review` alone (ceiling 100) both keep the Deep thresholds.
+- **`--mode deep` with BOTH `--no-codex` AND `--no-review`: use the Standard thresholds.** That one
+  combination zeroes `cross_model` and `corroboration` together, so its ceiling is 70 -- the same
+  ceiling as `standard --no-review`, which the Standard thresholds already govern. Deep's 75 is set
+  against a ceiling of 100 and would leave HIGH unreachable there. Applies to this combination ONLY
+  -- do not generalise: `deep --no-codex` alone (ceiling 85) and `deep --no-review` alone (ceiling
+  100) both keep the Deep thresholds.
 
 **Zero-finding unanimous override:** If ALL of these hold:
 - `AGREE_COUNT == EXPECTED_ADVISORS` (unanimous)
@@ -932,13 +930,14 @@ If `HYDRA_ITERATE`, show the DELTA BLOCK instead (see report-template.md iterati
 ---
 ```
 
-**Missing-state guard** (binds every trigger below that reads a previous review --
-`hydra verify`, `fix #N`, `hydra explain #N`, `hydra tensions`, `hydra blind-spots`): if neither
-`.hydra/state.json` nor any report under `.hydra/reports/` exists, print
-`[Hydra] No previous review found. Run 'hydra this' first.` and stop. Never fabricate a finding, a
-Top Action, or a report path to satisfy the trigger, and never start a review to satisfy it -- a
-review is only ever started by an explicit review trigger through the Step 0.9 cost confirmation.
-`hydra iterate` is the one deliberate exception: it falls back to a fresh review (Step 0.5).
+**Missing-state guard** -- binds these six triggers, which all read a previous review, wherever they
+are defined in this file: `hydra verify`, `fix #N`, `hydra explain #N`, `hydra details`,
+`hydra tensions`, `hydra blind-spots`. If neither `.hydra/state.json` nor any report under
+`.hydra/reports/` exists, print `[Hydra] No previous review found. Run 'hydra this' first.` and stop.
+Never fabricate a finding, a Top Action, or a report path to satisfy the trigger, and never start a
+review to satisfy it. `hydra iterate` is excluded from this guard, and from nothing else: it falls
+back to a fresh review (Step 0.5), which still passes the Step 0.9 cost confirmation like any other
+review. No trigger ever starts a review without that confirmation.
 
 **`hydra verify` trigger:** When user types `hydra verify`:
 1. Read the Verify block from the latest report (via state.json or SUMMARY BLOCK).

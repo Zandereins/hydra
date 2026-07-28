@@ -116,9 +116,11 @@ def test_no_dollar_before_digit_in_shipped_documents() -> None:
 # label however clean it was. Bisected: that hole existed from 2026-04-16, the commit that
 # introduced the numeric confidence system, through every one of the ~21 commits since.
 #
-# The constants are EXTRACTED from SKILL.md so they keep a single source and cannot drift from it;
-# only the formula's shape and the configuration list live here. Known scope limit, stated rather
-# than hidden: a seventh configuration added to SKILL.md stays uncovered until it is added below.
+# The numeric constants are EXTRACTED from SKILL.md, so those keep a single source. What lives here
+# and can therefore go stale, stated rather than hidden: the configuration list itself, and each
+# row's two availability flags. If SKILL.md gains a mode, or changes which modes run reviewers or
+# Codex, this list must be updated by hand — until then the test would keep passing on a wrong
+# premise. It is a reachability check over the configurations named below, not over all of them.
 CONFIGS: tuple[tuple[str, bool, bool, str], ...] = (
     # label, cross_model available, corroboration available, mode whose thresholds apply
     ("standard", False, True, "standard"),
@@ -130,8 +132,10 @@ CONFIGS: tuple[tuple[str, bool, bool, str], ...] = (
 )
 
 _CONSTANTS = {
-    "agreement": r"agreement\s+=.*\*\s*(\d+)",
-    "evidence": r"evidence\s+=\s*\(VERIFIED_COUNT.*\*\s*(\d+)",
+    # Anchored on each term's own numerator and non-greedy, so a trailing comment containing another
+    # `* <int>` on the same line cannot silently substitute a different constant.
+    "agreement": r"agreement\s*=\s*\(AGREE_COUNT.*?\*\s*(\d+)",
+    "evidence": r"evidence\s*=\s*\(VERIFIED_COUNT.*?\*\s*(\d+)",
     "cross": r"cross_model\s+=\s*min\(CROSS_MODEL_COUNT \* \d+, (\d+)\)",
     "corroboration": r"corroboration\s+=\s*min\(CORROBORATED_COUNT \* \d+, (\d+)\)",
     "clamp": r"clamp\(raw_score, \d+, (\d+)\)",
@@ -142,8 +146,11 @@ _CONSTANTS = {
 # The Step-5 rule mapping the both-modifiers deep combination onto the Standard thresholds. Detected
 # rather than assumed: delete that rule from SKILL.md and this guard goes red again, which is the
 # point -- it enforces the rule's existence instead of restating its conclusion.
+# Whitespace-tolerant AND newline-tolerant: re-wrapping the bullet must not silently flip this to
+# "absent" and fail with the wrong diagnosis ("HIGH unreachable") while the rule is in fact present.
+# Literal spaces would break on a wrap (`AND ` becomes `AND\n  `), so every gap is `\s+`.
 _DEEP_BOTH_USES_STANDARD = re.compile(
-    r"BOTH `--no-codex` AND `--no-review`.*use the Standard thresholds"
+    r"BOTH\s+`--no-codex`\s+AND\s+`--no-review`.*?use\s+the\s+Standard\s+thresholds", re.S
 )
 
 
