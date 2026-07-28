@@ -675,7 +675,8 @@ SERIOUS by Cassandra and MODERATE by Navigator as two distinct findings.
 - **`--mode deep` with BOTH `--no-codex` AND `--no-review`: use the Standard thresholds.** That one
   combination zeroes `cross_model` and `corroboration` together, so its ceiling is 70 -- the same
   ceiling as `standard --no-review`, which the Standard thresholds already govern. Deep's 75 is set
-  against a ceiling of 100 and would leave HIGH unreachable there. Applies to this combination ONLY
+  against a ceiling of 100 and would leave HIGH unreachable there for any review that produces
+  findings (the zero-finding unanimous override below is unaffected). Applies to this combination ONLY
   -- do not generalise: `deep --no-codex` alone (ceiling 85) and `deep --no-review` alone (ceiling
   100) both keep the Deep thresholds.
 
@@ -935,9 +936,11 @@ are defined in this file: `hydra verify`, `fix #N`, `hydra explain #N`, `hydra d
 `hydra tensions`, `hydra blind-spots`. If neither `.hydra/state.json` nor any report under
 `.hydra/reports/` exists, print `[Hydra] No previous review found. Run 'hydra this' first.` and stop.
 Never fabricate a finding, a Top Action, or a report path to satisfy the trigger, and never start a
-review to satisfy it. `hydra iterate` is excluded from this guard, and from nothing else: it falls
-back to a fresh review (Step 0.5), which still passes the Step 0.9 cost confirmation like any other
-review. No trigger ever starts a review without that confirmation.
+review to satisfy it. `hydra iterate` and `hydra history` are excluded from this guard, and from
+nothing else -- each already carries its own missing-state path (Step 0.5 and the History Command).
+Iterate's path falls back to a fresh review, and that review still passes the Step 0.9 cost
+confirmation: none of the six triggers named here, and no fallback reachable from them, ever starts
+a review without it.
 
 **`hydra verify` trigger:** When user types `hydra verify`:
 1. Read the Verify block from the latest report (via state.json or SUMMARY BLOCK).

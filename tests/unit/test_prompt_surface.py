@@ -120,7 +120,8 @@ def test_no_dollar_before_digit_in_shipped_documents() -> None:
 # and can therefore go stale, stated rather than hidden: the configuration list itself, and each
 # row's two availability flags. If SKILL.md gains a mode, or changes which modes run reviewers or
 # Codex, this list must be updated by hand — until then the test would keep passing on a wrong
-# premise. It is a reachability check over the configurations named below, not over all of them.
+# premise. It checks reachability for the configurations named below, not for every configuration
+# SKILL.md documents.
 CONFIGS: tuple[tuple[str, bool, bool, str], ...] = (
     # label, cross_model available, corroboration available, mode whose thresholds apply
     ("standard", False, True, "standard"),
@@ -146,11 +147,13 @@ _CONSTANTS = {
 # The Step-5 rule mapping the both-modifiers deep combination onto the Standard thresholds. Detected
 # rather than assumed: delete that rule from SKILL.md and this guard goes red again, which is the
 # point -- it enforces the rule's existence instead of restating its conclusion.
-# Whitespace-tolerant AND newline-tolerant: re-wrapping the bullet must not silently flip this to
-# "absent" and fail with the wrong diagnosis ("HIGH unreachable") while the rule is in fact present.
-# Literal spaces would break on a wrap (`AND ` becomes `AND\n  `), so every gap is `\s+`.
+# Tolerant of re-wrapping (every gap is `\s+`, and the span may cross newlines) but BOUNDED to 200
+# characters, which is the whole point: an unbounded span would let the two halves match pages
+# apart, so deleting the rule while either phrase survives elsewhere would report it as present.
+# Both failure directions matter — a wrap must not read as absent, a deletion must not read as
+# present.
 _DEEP_BOTH_USES_STANDARD = re.compile(
-    r"BOTH\s+`--no-codex`\s+AND\s+`--no-review`.*?use\s+the\s+Standard\s+thresholds", re.S
+    r"BOTH\s+`--no-codex`\s+AND\s+`--no-review`[\s\S]{0,200}?use\s+the\s+Standard\s+thresholds"
 )
 
 
