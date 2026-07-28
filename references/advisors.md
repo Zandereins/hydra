@@ -28,7 +28,7 @@ Number each finding as {{YOUR_INITIAL}}-1, {{YOUR_INITIAL}}-2, etc.
 EVIDENCE CHAIN:
 Every finding MUST include an evidence chain as the FIRST line, in this format:
 
-CHAIN: `{{file}}:{{line_range}}` -> `{{code_construct}}` -> `{{assumption}}` -> `{{failure_mode}}` -> `{{impact}}`
+CHAIN: `<file>:<line_range>` -> `<code_construct>` -> `<assumption>` -> `<failure_mode>` -> `<impact>`
 
 - file:line_range = exact location (e.g., `auth/middleware.ts:47-62`)
 - code_construct = the specific code pattern (e.g., `refreshToken() called without mutex`)
