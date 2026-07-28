@@ -170,15 +170,19 @@ verdict.
 
 ## Modes
 
+<!-- These figures mirror SKILL.md, which is authoritative -- update it first, then here.
+     Both sides are pinned by tests/unit/test_prompt_surface.py, which also forbids a bare `$`
+     before a digit (the skill loader would expand it as a positional argument). -->
+
 | Mode | CLI | Agents | Est. Cost |
 |------|-----|--------|-----------|
-| **standard** *(default)* | -- | 8 (4 advisors + 3 reviewers + chairman) | around $0.70-1.20 |
-| **standard --no-review** | `--no-review` | 5 (4 advisors + chairman) | around $0.35-0.65 |
-| **deep** | `--mode deep` | 10 (6 advisors + 3 reviewers + chairman) | around $1.50-2.50 |
+| **standard** *(default)* | -- | 8 (4 advisors + 3 reviewers + chairman) | around USD 0.70-1.20 |
+| **standard --no-review** | `--no-review` | 5 (4 advisors + chairman) | around USD 0.35-0.65 |
+| **deep** | `--mode deep` | 10 (6 advisors + 3 reviewers + chairman) | around USD 1.50-2.50 |
 
 **Modifiers** (combinable with either mode):
 - `--no-codex` -- Codex advisors run on Opus instead
-- `--no-review` -- skip peer review (standard: 8 to 5 agents, the fast path around $0.35-0.65; deep: 10 to 7 agents, around $1.00)
+- `--no-review` -- skip peer review (standard: 8 to 5 agents, the fast path around USD 0.35-0.65; deep: 10 to 7 agents, around USD 1.00)
 - `--transcript` -- save raw agent outputs separately
 
 **Focus flags:** `--focus security|perf|readability|architecture|reliability` -- includes the mapped advisor and prioritizes matching files in the diff budget (not a word-budget or weighting multiplier). Mapping: security to Sentinel, perf to Volta, readability to Mies+, architecture to Navigator, reliability to Cassandra. Flags for `perf` and `architecture` auto-escalate to deep mode (those advisors only exist in deep).
@@ -315,8 +319,8 @@ spawning agents.
 
 ## FAQ
 
-**How much does it cost?** Standard: around $0.70-1.20 (the fast `--no-review` path is around
-$0.35-0.65). Deep: around $1.50-2.50. These are API costs charged to your accounts. Hydra shows
+**How much does it cost?** Standard: around USD 0.70-1.20 (the fast `--no-review` path is around
+USD 0.35-0.65). Deep: around USD 1.50-2.50. These are API costs charged to your accounts. Hydra shows
 estimates before running.
 
 **Where are reports?** `.hydra/reports/` in your project root (gitignored). Run

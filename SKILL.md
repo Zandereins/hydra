@@ -30,9 +30,9 @@ including Echo, which reviews AI-assisted-development failure modes -- then thre
 reviewers cross-examine them and a chairman synthesizes the verdict. Escalate to deep
 mode for the full council: six advisors plus cross-model (Codex) diversity.
 
-Standard mode runs 4 advisors + 3 reviewers + chairman on Opus (~$0.70-1.20); add
-`--no-review` for the fast 4-advisor path (~$0.35-0.65). Deep mode adds 2 more advisors
-(including 2 Codex) and cross-model diversity, with the reviewers examining all 6 (~$1.50-2.50).
+Standard mode runs 4 advisors + 3 reviewers + chairman on Opus (~USD 0.70-1.20); add
+`--no-review` for the fast 4-advisor path (~USD 0.35-0.65). Deep mode adds 2 more advisors
+(including 2 Codex) and cross-model diversity, with the reviewers examining all 6 (~USD 1.50-2.50).
 
 Reference files in `references/` define all prompts and protocols -- read them at the
 relevant step.
@@ -53,15 +53,22 @@ under `.hydra/` and never mutates the code under review.
 
 ## Modes
 
+<!-- These cost/agent figures are mirrored in README.md and pinned by tests/unit/test_prompt_surface.py.
+     SKILL.md is authoritative: change here first, then update README.md.
+     Never write a bare dollar sign immediately followed by a digit anywhere in this file -- the skill
+     loader expands such sequences as positional arguments of the invocation, so the figure reaches the
+     model replaced by the caller's argument. Write money with the `USD ` prefix as in the table below;
+     for shell positionals use the brace form `${1}`, which the loader leaves intact. -->
+
 | Mode | CLI | Advisors | Reviewers | Chairman | Total | Est. Cost |
 |------|-----|----------|-----------|----------|-------|-----------|
-| **standard** | *(default)* | 4 (Cassandra + Mies+ + Sentinel + Echo) | 3 (all Opus) | 1 Opus | 8 | ~$0.70-1.20 |
-| **standard --no-review** | `--no-review` | 4 (same) | 0 | 1 Opus | 5 | ~$0.35-0.65 |
-| **deep** | `--mode deep` | 6 (4 Opus + 2 Codex) | 3 (all Opus) | 1 Opus | 10 | ~$1.50-2.50 |
+| **standard** | *(default)* | 4 (Cassandra + Mies+ + Sentinel + Echo) | 3 (all Opus) | 1 Opus | 8 | ~USD 0.70-1.20 |
+| **standard --no-review** | `--no-review` | 4 (same) | 0 | 1 Opus | 5 | ~USD 0.35-0.65 |
+| **deep** | `--mode deep` | 6 (4 Opus + 2 Codex) | 3 (all Opus) | 1 Opus | 10 | ~USD 1.50-2.50 |
 
 Modifiers (combinable):
 - `--no-codex` -- the deep-mode Codex advisors (Mies+, Sentinel) run on Opus instead.
-- `--no-review` -- Skip the peer-review phase. In **standard**: 8 -> 5 agents (~$0.35-0.65, the fast path). In **deep**: 10 -> 7 agents (~$1.00).
+- `--no-review` -- Skip the peer-review phase. In **standard**: 8 -> 5 agents (~USD 0.35-0.65, the fast path). In **deep**: 10 -> 7 agents (~USD 1.00).
 
 **Minimum thresholds** -- formula: `ceil(N * 0.6)`, min 2:
 
@@ -208,9 +215,9 @@ Chairman: 1 Opus
 Estimated: {{TIME}}, {{COST}}.
 
 Alternatives:
-  {{IF standard}} --mode deep -> 10 agents, ~$1.50-2.50, ~2 min (escalate)
-  {{IF standard}} --no-review -> 5 agents, ~$0.35-0.65, ~1 min (fast 4-advisor path)
-  {{IF deep}} (no flags) -> standard: 8 agents, ~$0.70-1.20, ~2 min (reduce)
+  {{IF standard}} --mode deep -> 10 agents, ~USD 1.50-2.50, ~2 min (escalate)
+  {{IF standard}} --no-review -> 5 agents, ~USD 0.35-0.65, ~1 min (fast 4-advisor path)
+  {{IF deep}} (no flags) -> standard: 8 agents, ~USD 0.70-1.20, ~2 min (reduce)
   --no-codex       -> Codex advisors run on Opus instead
   --no-review      -> skip peer review (standard: 8->5 agents; deep: 10->7 agents)
 
@@ -689,7 +696,7 @@ label is consistent with the displayed number in either mode.
 
 **Scope indicator** (always show when `diff_context` is active):
 Print after confidence line: `SCOPE {{DIFF_LINES}}/{{EST_TOTAL_LINES}} lines ({{SCOPE_PCT}}%) -- diff-anchored review`
-If 0 findings + windowed: append warning: `Note: 0 findings on limited scope does NOT validate unreviewed code.`
+If 0 findings + windowed: append warning: `Note: 0 findings on limited scope does NOT validate unreviewed code -- files outside the diff were not reviewed, including any file that restates a value changed here (a cross-file invariant whose other side did not change is structurally invisible to a diff-anchored review).`
 
 **Display format:** `Confidence: {{SCORE}}% ({{LABEL}})` — e.g., `Confidence: 78% (HIGH)`.
 
