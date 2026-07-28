@@ -939,8 +939,8 @@ Never fabricate a finding, a Top Action, or a report path to satisfy the trigger
 review to satisfy it. `hydra iterate` and `hydra history` are excluded from this guard, and from
 nothing else -- each already carries its own missing-state path (Step 0.5 and the History Command).
 Iterate's path falls back to a fresh review, and that review still passes the Step 0.9 cost
-confirmation: none of the six triggers named here, and no fallback reachable from them, ever starts
-a review without it.
+confirmation: no trigger in this section, and no fallback reachable from any of them, ever starts a
+review without it.
 
 **`hydra verify` trigger:** When user types `hydra verify`:
 1. Read the Verify block from the latest report (via state.json or SUMMARY BLOCK).
