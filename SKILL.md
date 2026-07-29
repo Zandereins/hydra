@@ -737,6 +737,11 @@ Display format unchanged: `Confidence: {{SCORE}}% ({{LABEL}})`.
 
 **Degraded panel override:** If fewer than minimum advisors responded, cap score at 25 and
 force label to LOW with note: `(degraded: {{N}}/{{EXPECTED}} responded, score capped at 25)`.
+Currently UNREACHABLE for advisors and deliberately kept: the Error-Handling table aborts the run
+below the advisor minimum, so this branch cannot be entered today. It is retained rather than
+deleted because it is the fail-safe that would be needed the moment that abort becomes a
+proceed-anyway (and because reviewers, unlike advisors, already do proceed below their minimum).
+Do not cite it as the reason for any note the report emits — see Step 6.
 The cap is set below both modes' LOW thresholds (Standard < 30, Deep < 40) so the forced LOW
 label is consistent with the displayed number in either mode.
 
@@ -941,7 +946,11 @@ chmod 600 .hydra/state.json
 Omit sections for advisors/reviewers that didn't participate in this mode (don't list
 them as timeout). For actual timeouts: mark as `[TIMEOUT -- no response]`.
 Omit `## Peer Reviews` if no reviewers ran. Omit `### Cross-Model Signals` if Opus-only.
-If fewer than expected responded, add degradation note at top of Verdict section.
+If fewer than expected responded, add the matching degradation note at the top of the Verdict
+section — report-template.md defines two, keyed on whether the Step-5 cap actually fired. Emitting
+the capped-and-forced-LOW wording for a merely-below-expected panel puts a false sentence next to a
+frontmatter `confidence_label` that contradicts it (standard mode, 3 of 4 responding: 3 >= the
+minimum of 3, so nothing is capped and the score can legitimately land on HIGH).
 
 If `--transcript`: save raw agent outputs to separate file (see report-template.md).
 
