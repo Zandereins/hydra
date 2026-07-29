@@ -676,7 +676,14 @@ deductions     = (CONTRADICTED_COUNT * -10) + (BLIND_SPOT_COUNT * -5)
 // EXCEPTION: zero-finding unanimous case — "absence of findings IS evidence" already
 // communicates scope via the scope indicator line below; the cap does not re-apply.
 IF IS_PARTIAL_SCOPE AND TOTAL_FINDINGS > 0:
-  evidence     = min(evidence, 15)   // half-max: partial reviews can't fully verify findings
+  evidence     = min(evidence, 20)   // two-thirds: partial reviews can't fully verify findings.
+                                     // 20, not 15: at 15 the partial ceiling falls below the HIGH
+                                     // threshold in `standard --no-review` (55<60), `deep --no-codex`
+                                     // (70<75) and `deep --no-codex --no-review` (55<60), so a
+                                     // unanimous, fully-VERIFIED panel could never earn HIGH there --
+                                     // and a branch review is always partial. Pinned by
+                                     // tests/unit/test_prompt_surface.py, which runs the CONFIGS
+                                     // matrix at both scopes; lowering this re-breaks it.
 
 raw_score      = agreement + evidence + cross_model + corroboration + deductions
 CONFIDENCE_SCORE = clamp(raw_score, 5, 100)
@@ -703,8 +710,11 @@ SERIOUS by Cassandra and MODERATE by Navigator as two distinct findings.
   ceiling as `standard --no-review`, which the Standard thresholds already govern. Deep's 75 is set
   against a ceiling of 100 and would leave HIGH unreachable there for any review that produces
   findings (the zero-finding unanimous override below is unaffected). Applies to this combination ONLY
-  -- do not generalise: `deep --no-codex` alone (ceiling 85) and `deep --no-review` alone (ceiling
-  100) both keep the Deep thresholds.
+  -- do not generalise: `deep --no-codex` alone (full-scope ceiling 85, partial 75) and
+  `deep --no-review` alone (full 100, partial 85) both keep the Deep thresholds.
+  All ceilings quoted here are FULL-scope unless stated; the partial-scope figure is 10 lower
+  wherever the evidence cap applies, which is every diff-anchored review and every narrowed
+  `hydra this`. Both rows are pinned by tests/unit/test_prompt_surface.py.
 
 **Zero-finding unanimous override:** If ALL of these hold:
 - `AGREE_COUNT == EXPECTED_ADVISORS` (unanimous)
