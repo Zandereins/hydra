@@ -216,6 +216,26 @@ def sidecar_path_for(report_path: Path) -> Path:
     return report_path.with_suffix(".findings.json")
 
 
+def _apply_caps(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Bound fan-out and field length at the production entry point.
+
+    The sidecar path caps internally (`extract_from_sidecar`, `_candidate_from_sidecar_finding`);
+    the prose-report path never did, and `extract_candidates` falls through to it whenever the
+    sidecar is missing or empty -- a degradation SKILL.md Step 6 explicitly tolerates. Measured on
+    a 500-action report: 500 candidates at a cap of 200, titles of 6000 chars at a cap of 2000.
+    Every candidate becomes a BILLED judge call, so the uncapped path could multiply the cost of a
+    scoring run 2.5x and poison the captured baseline.
+
+    Applied here rather than by moving the caps out of the sidecar path: `test_sidecar_extraction`
+    pins `len(extract_from_sidecar(...)) == MAX_FINDINGS` as that function's own contract. Both
+    sites read the same constants, so the double application is idempotent, not a drift risk.
+    """
+    return [
+        {k: (v[:MAX_FIELD_CHARS] if isinstance(v, str) else v) for k, v in c.items()}
+        for c in candidates[:MAX_FINDINGS]
+    ]
+
+
 def extract_candidates(report_path: Path) -> list[dict[str, Any]]:
     """Candidates for a report: prefer the structured `.findings.json` sidecar, fall back
     to scraping the prose `.md` (1.x / missing or empty sidecar)."""
@@ -223,5 +243,5 @@ def extract_candidates(report_path: Path) -> list[dict[str, Any]]:
     if sidecar.exists():
         cands = extract_from_sidecar(_read_capped(sidecar, MAX_SIDECAR_BYTES))
         if cands:
-            return cands
-    return extract_from_report(_read_capped(report_path, MAX_REPORT_BYTES))
+            return _apply_caps(cands)
+    return _apply_caps(extract_from_report(_read_capped(report_path, MAX_REPORT_BYTES)))
