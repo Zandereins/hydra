@@ -22,6 +22,7 @@ Create `.hydra/.gitignore` with `*` on first run.
   `> **Note:** Degraded confidence -- only {{N}} of {{EXPECTED}} responded (score capped at 25, forced LOW).`
 - `is_windowed`: `true` for branch/iterate/pr reviews (diff_context active); `false` for `hydra this`. Emit as unquoted YAML boolean (`is_windowed: true` -- NOT `"true"`).
 - `scope_pct`: integer 0-100 when `is_windowed: true`; YAML `null` (bareword, unquoted) when `false`. Never emit the string `"null"`. Sourced from SKILL.md Step 1 scope metrics; matches the `SCOPE` line in the in-conversation summary.
+- `partial_not_windowed`: the SCOPE-line condition for a **narrowed `hydra this`** -- true when SKILL.md Step 1 set `IS_PARTIAL_SCOPE` while `IS_WINDOWED` is false. Its `{{SHOWN_LINES}}`, `{{TOTAL_LINES}}` and `{{OMITTED_RANGE}}` come from the same Step 1 block. The two SCOPE lines are mutually exclusive: a diff-anchored review emits the `diff_context` one, a narrowed full-file review emits this one, and a complete `hydra this` emits neither. Frontmatter `is_windowed`/`scope_pct` stay keyed to `IS_WINDOWED` alone and are unaffected.
 
 ---
 
@@ -189,6 +190,7 @@ surfaced only on `hydra details` — SKILL.md Step 7 is the single source of tru
 SEVERITY   CATASTROPHIC [{{N}}]  SERIOUS [{{N}}]  MODERATE [{{N}}]
 CONFIDENCE {{SCORE}}% ({{LABEL}}) -- {{N}}/{{M}} advisors -- {{cross-model|opus-only}}
 {{IF diff_context}} SCOPE    {{DIFF_LINES}}/{{EST_TOTAL_LINES}} lines ({{SCOPE_PCT}}%) -- diff-anchored review{{ENDIF}}
+{{IF partial_not_windowed}} SCOPE    {{SHOWN_LINES}}/{{TOTAL_LINES}} lines -- partial-file review; {{OMITTED_RANGE}} not reviewed{{ENDIF}}
 VERDICT    {{ONE sentence from chairman. Active voice. No hedging.}}
 
 --- ACTION REQUIRED ---
