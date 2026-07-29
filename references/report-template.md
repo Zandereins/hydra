@@ -23,8 +23,11 @@ Create `.hydra/.gitignore` with `*` on first run.
   - fewer than EXPECTED responded (but at least the minimum, so the run proceeded normally and
     the score was NOT capped): `> **Note:** Only {{N}} of {{EXPECTED}} advisors responded; the
     verdict rests on the {{N}} that did.`
-  - fewer than MINIMUM responded, i.e. SKILL.md Step 5's degraded-panel override actually fired:
+  - fewer than MINIMUM ADVISORS responded, i.e. SKILL.md Step 5's degraded-panel override actually fired:
     `> **Note:** Degraded confidence -- only {{N}} of {{EXPECTED}} responded (score capped at 25, forced LOW).`
+  - fewer than minimum REVIEWERS responded (the Error-Handling table proceeds here rather than
+    aborting, and no cap applies — corroboration is simply thinner):
+    `> **Note:** Only {{N}} of 3 peer reviewers responded; corroboration and dispute coverage are reduced. The score is not capped.`
 - `is_windowed`: `true` for branch/iterate/pr reviews (diff_context active); `false` for `hydra this`. Emit as unquoted YAML boolean (`is_windowed: true` -- NOT `"true"`).
 - `scope_pct`: integer 0-100 when `is_windowed: true`; YAML `null` (bareword, unquoted) when `false`. Never emit the string `"null"`. Sourced from SKILL.md Step 1 scope metrics; matches the `SCOPE` line in the in-conversation summary.
 - `partial_not_windowed`: the SCOPE-line condition for a **narrowed `hydra this`**. Defined in SKILL.md Step 1 (single source of truth) as `IS_PARTIAL_SCOPE AND NOT IS_WINDOWED`. Its `{{SHOWN_LINES}}`, `{{EST_TOTAL_LINES}}` and `{{OMITTED_RANGE}}` come from the same Step 1 block (`EST_TOTAL_LINES` is the shared denominator -- the diff-anchored SCOPE line uses it too). The two SCOPE lines are mutually exclusive: a diff-anchored review emits the `diff_context` one, a narrowed full-file review emits this one, and a complete `hydra this` emits neither. Frontmatter `is_windowed`/`scope_pct` stay keyed to `IS_WINDOWED` alone and are unaffected.
