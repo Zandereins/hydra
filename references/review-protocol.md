@@ -10,7 +10,9 @@ Label responses A-F (A=Cassandra, B=Mies+, C=Navigator, D=Volta, E=Sentinel, F=E
 All reviewers see the same labels — no permutation needed.
 Preserve original field headings.
 Omit labels for advisors that didn't run: **standard** mode reviews A, B, E, F (Cassandra, Mies+, Sentinel, Echo -- Navigator/Volta are deep-only); **deep** mode reviews all of A-F.
-In `--no-codex` mode, all 6 advisors run on Opus — include all labels A-F.
+`--no-codex` changes only which MODEL Mies+ and Sentinel run on, never how many advisors exist —
+the roster stays the one the line above derives from the mode. (It is reachable in standard too:
+Step 0.7's auto-switch is not mode-gated, and standard is Opus-only anyway, so there it is a no-op.)
 
 Wrap each response using the `{{BOUNDARY}}` token from Step 0:
 ```
@@ -71,10 +73,11 @@ SECTION B: CROSS-ADVISOR ANALYSIS (~200 words)
 **Corroborated findings:** Which findings are backed by 2+ advisors? List with labels.
   Use [CORROBORATED] tag for each.
 **Contradictions:** Where do advisors disagree? For each: who says what, which has
-  stronger code evidence. Use [CONTRADICTED] tag. Note: in windowed reviews
-  (`diff_context` active per SKILL.md Step 1), evidence gaps may reflect limited scope
-  rather than weak advisor work -- weigh against the `SCOPE` indicator from Step 5 before
-  penalizing an advisor for "missing" evidence that is structurally unavailable.
+  stronger code evidence. Use [CONTRADICTED] tag. Note: on a partial-scope review -- a
+  diff-anchored one or a `hydra this` narrowed to a line range (SKILL.md Step 1,
+  `IS_PARTIAL_SCOPE`) -- an evidence gap may reflect code the advisor was never shown rather
+  than weak work. The prompt states the reviewed range; judge against that, and do not penalize
+  an advisor for evidence that is structurally unavailable to it.
 **The gap:** One consideration NO advisor addressed that matters for this question.
 
 SECTION C: PER-ADVISOR VERDICTS (~150-300 words, scales with response count -- see RULES)
