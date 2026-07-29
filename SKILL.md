@@ -363,7 +363,9 @@ reviewed files -- either because the review is diff-anchored (`IS_WINDOWED = tru
 `hydra this` selection was narrowed to a line range (Step 0.3). Compute `SHOWN_LINES` (source lines
 actually placed in the prompt) and reuse `EST_TOTAL_LINES` from the Scope-metrics block below as the
 denominator -- it is the same quantity (`wc -l` over the reviewed files), so do NOT introduce a
-second name for it. Then set `IS_PARTIAL_SCOPE = IS_WINDOWED OR SHOWN_LINES < EST_TOTAL_LINES`.
+second name for it. Then set `IS_PARTIAL_SCOPE = IS_WINDOWED OR SHOWN_LINES < EST_TOTAL_LINES`, and its narrower
+companion `partial_not_windowed = IS_PARTIAL_SCOPE AND NOT IS_WINDOWED` (true only for a narrowed
+`hydra this`) -- this file is the single source of truth for both; `report-template.md` consumes them.
 Keep `IS_WINDOWED` itself narrow (diff-anchored only): `is_windowed` and `scope_pct` are persisted
 with that meaning in `state.json`, `audit.log` and the report frontmatter, so widening it would
 change four consumers at once. **A narrowed `hydra this` is partial WITHOUT being windowed** --
