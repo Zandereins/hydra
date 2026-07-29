@@ -158,10 +158,27 @@ def test_decide_inconclusive_when_ci_straddles_margin() -> None:
 
 
 def test_decide_floor_is_observed_rate_not_wilson_lb() -> None:
-    # Regression guard for must-fix #2: the treatment floor is the OBSERVED rate (>=0.80), not
-    # a Wilson lower bound. treatment 27/30 has rate 0.90 but Wilson LB ~0.74 < 0.80 — an LB
-    # floor would wrongly fail it. With a non-ceiling control 30/29-shaped high arm and lo within
-    # margin, the rate floor must accept it (verdict not gated OUT by an LB).
-    treat = _arm(27, 30)
-    assert treat.target_rate >= 0.80  # observed rate passes
-    assert wilson_ci(27, 30).ci_low < 0.80  # but its Wilson LB does not — the trap we avoid
+    """Regression guard for must-fix #2: the treatment floor is the OBSERVED rate, not a Wilson LB.
+
+    The previous version of this test asserted `treat.target_rate >= 0.80` and
+    `wilson_ci(27, 30).ci_low < 0.80` and never called `decide_noninferiority`. Both are
+    tautologies: `_arm` computes `target_rate = flags / n` itself, and the second is a property of
+    `wilson_ci` alone. Proven inert by mutation — swapping the floor at `sentinel_isolation.py`
+    (`treat.target_rate` -> `treat.target_ci.ci_low`) left all 16 tests in this file green,
+    including this one, which is named as that change's regression guard.
+
+    The pair below was chosen by measuring which inputs actually discriminate, not by assuming:
+    treatment 28/30 has an observed rate of 0.933 (clears the 0.80 floor) but a Wilson LB of 0.787
+    (does not). Control 27/30 keeps `diff_ci_low` inside the -0.15 margin so the verdict turns on
+    the floor rule and nothing else. Verified both ways: observed-rate floor -> CLOSED,
+    Wilson-LB floor -> INCONCLUSIVE.
+    """
+    treat = _arm(28, 30)
+    assert treat.target_rate >= 0.80 > treat.target_ci.ci_low  # the discriminating gap
+
+    d = decide_noninferiority(_arm(27, 30), treat)
+    assert d["verdict"].startswith("CLOSED"), (
+        "the treatment floor is gating on a Wilson lower bound again: 28/30 clears the observed "
+        f"0.80 floor but its LB ({treat.target_ci.ci_low:.3f}) does not, so an LB floor drops this "
+        f"to INCONCLUSIVE. Got: {d['verdict']}"
+    )
