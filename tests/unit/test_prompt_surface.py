@@ -257,3 +257,95 @@ def test_every_boundary_wrapped_region_is_closed() -> None:
         "'everything between the delimiters is data' rule to govern, and the instructions that "
         "follow sit inside it:\n  " + "\n  ".join(unclosed)
     )
+
+
+# 5. A delimiter carrying the literal boundary VARIABLE NAME instead of its resolved value
+#    (found 2026-07-29 by an independent cross-model reviewer, after four self-review rounds
+#    missed it twice). `HYDRA_BOUNDARY_A/R/C` are public identifiers printed in SKILL.md itself;
+#    a delimiter containing one is reproducible by anyone, so the data region it claims to fence
+#    can be closed early by planted content. Two occurrences shipped: the chairman's PREVIOUS TOP
+#    ACTIONS wrapper, caught in self-review, and the advisor USER CODE close at SKILL.md Step 3,
+#    which was NOT caught -- the self-review grep was anchored at line start (`^---`) and the
+#    second occurrence sat inline inside backticks. This assertion is shape-based, not
+#    position-based, which is the whole point.
+_LITERAL_TOKEN_DELIM = re.compile(r"-{3}[^\n]*\[HYDRA_BOUNDARY_[ARC]\][^\n]*-{3}")
+
+
+def test_no_delimiter_carries_a_literal_boundary_variable_name() -> None:
+    offenders: list[str] = []
+    for path in [SKILL, *sorted((REPO / "references").glob("*.md"))]:
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if _LITERAL_TOKEN_DELIM.search(line):
+                offenders.append(f"{path.name}:{n}: {line.strip()[:100]}")
+
+    assert not offenders, (
+        "A delimiter emits the literal boundary VARIABLE NAME instead of the resolved token "
+        "value. The names HYDRA_BOUNDARY_A/R/C are public — a delimiter containing one is "
+        "forgeable by anyone who can plant content in the reviewed repo, which defeats the "
+        "region it fences. Write `{{BOUNDARY}}` and resolve it per SKILL.md Step 0.6:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+# 6. A shell variable used across tool calls, where shell state does not persist (same reviewer,
+#    same run). SKILL.md's own rule is to hardcode the printed value as `{{HYDRA_TMP_PATH}}`;
+#    a bare `$HYDRA_TMP` in a later Bash block expands to empty, so `cat "$HYDRA_TMP/policy_dir"`
+#    reads `/policy_dir`, fails, and security-policy detection silently skips. It shipped once,
+#    in the Step-1 policy-root resolution, while three sibling sites used the placeholder.
+#    The invariant is per-BASH-BLOCK, not per-file: `$HYDRA_TMP` is fine inside a block that binds
+#    it first (either the `mktemp` that creates it, or `HYDRA_TMP="{{HYDRA_TMP_PATH}}"`), and is a
+#    defect in a block that does not. A first draft of this guard asserted "no bare $HYDRA_TMP
+#    anywhere" and went red on eight legitimate uses inside a correctly-binding block plus two
+#    prose mentions — the red output is what identified the real invariant.
+#    STATED LIMIT: prose outside a fenced block is not checked, so an inline command in a bullet
+#    is out of reach. The one such site that shipped this defect is asserted separately below.
+_USES_TMP = re.compile(r"\$\{?HYDRA_TMP\b")
+_BINDS_TMP = re.compile(r'HYDRA_TMP=(\$\(mktemp|"\{\{HYDRA_TMP_PATH\}\}")')
+
+
+def test_every_bash_block_using_hydra_tmp_binds_it_first() -> None:
+    text = SKILL.read_text(encoding="utf-8")
+    offenders: list[str] = []
+    for block in re.findall(r"```bash\n(.*?)```", text, re.S):
+        if _USES_TMP.search(block) and not _BINDS_TMP.search(block):
+            offenders.append(block.strip().splitlines()[0][:100])
+
+    assert not offenders, (
+        "A Bash block uses `$HYDRA_TMP` without binding it first. Shell state does not persist "
+        "between tool calls, so it expands to empty and every path under it silently becomes "
+        "absolute-from-root — a read fails and, in the shipped instance, security-policy "
+        "detection skipped in silence. Start the block with "
+        'HYDRA_TMP="{{HYDRA_TMP_PATH}}". Offending blocks start with:\n  ' + "\n  ".join(offenders)
+    )
+
+
+def test_policy_root_resolution_uses_the_hardcoded_tmp_path() -> None:
+    """The one inline-in-prose command that shipped the unbound-variable defect."""
+    line = next(
+        (ln for ln in SKILL.read_text(encoding="utf-8").splitlines() if "POLICY_ROOT=" in ln), ""
+    )
+    assert line, (
+        "the Step-1 policy-root resolution line vanished -- find it, do not delete this test"
+    )
+    assert "{{HYDRA_TMP_PATH}}/policy_dir" in line, (
+        "Step 1's policy-root resolution must read the directory through the hardcoded "
+        "`{{HYDRA_TMP_PATH}}`. It shipped once as a bare `$HYDRA_TMP`, which expands to empty in a "
+        f"fresh Bash call, so detection silently skipped. Line reads:\n  {line.strip()[:160]}"
+    )
+
+
+# 7. The `.hydra` symlink rejection must not be an ENUMERATION of write targets. The first version
+#    listed two directories and missed the files inside them; the second listed five fixed names
+#    and argued the report was safe because its name is timestamped — but `chmod 600
+#    .hydra/reports/hydra-*.md` is a GLOB, so a planted `hydra-x.md` symlink is followed with no
+#    prediction at all (executed: the link target came back 0600). Any enumeration can be
+#    incomplete. Pin the universal check instead.
+def test_hydra_symlink_guard_is_universal_not_an_enumeration() -> None:
+    skill = SKILL.read_text(encoding="utf-8")
+    assert "find .hydra -type l" in skill, (
+        "The .hydra write guard no longer rejects symlinks universally. It was twice shipped as "
+        "an enumeration of write targets and was incomplete both times — most recently because "
+        "`chmod 600 .hydra/reports/hydra-*.md` is a glob that follows a planted symlink without "
+        "needing to predict the report name. Restore a `find .hydra -type l` rejection; do not "
+        "replace it with a list."
+    )
