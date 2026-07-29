@@ -14,3 +14,7 @@ docs/generate-social-preview.py
 
 # capture / run logs (persistent, survive reboot — unlike /tmp)
 *.log
+
+# Local uv artifact — CI installs via pip (.github/workflows/ci.yml), so this lock is not
+# authoritative and must not drift into the repo.
+uv.lock
