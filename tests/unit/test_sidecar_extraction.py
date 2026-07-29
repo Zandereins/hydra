@@ -105,3 +105,33 @@ def test_extract_candidates_falls_back_to_prose_when_no_sidecar(tmp_path: Path) 
     )
     cands = extract_candidates(report)
     assert cands[0]["file"] == "from_prose.ts"
+
+
+def test_extract_candidates_caps_the_prose_fallback_path(tmp_path: Path) -> None:
+    """The fan-out cap must hold on the path taken when the sidecar is missing.
+
+    `extract_from_sidecar` capped internally; the prose-report fallback never did, and
+    `extract_candidates` falls through to it whenever the sidecar is absent or empty -- a
+    degradation SKILL.md Step 6 explicitly tolerates. Measured before the fix: a 500-action
+    report yielded 500 candidates against a cap of 200, with 6000-character titles against a
+    cap of 2000. Every candidate is a BILLED judge call, so this multiplied the cost of a
+    scoring run and poisoned the captured baseline.
+    """
+    report = tmp_path / "hydra-20260729T000000-cap.md"
+    report.write_text(
+        "## Actions\n\n"
+        + "".join(
+            f"### A{i} -- SERIOUS -- src/f{i}.py:1-2 -- Est: S\n\n**What:** " + "x" * 3000 + "\n\n"
+            for i in range(1, MAX_FINDINGS + 51)
+        )
+    )
+    assert not sidecar_path_for(report).exists()  # the fallback path is the one under test
+
+    cands = extract_candidates(report)
+    assert len(cands) <= MAX_FINDINGS, (
+        f"prose fallback returned {len(cands)} candidates against a cap of {MAX_FINDINGS} -- "
+        "each one is a billed judge call"
+    )
+    assert max(len(c["title"]) for c in cands) <= MAX_FIELD_CHARS, (
+        "prose fallback returned an over-long field; the per-field cap is not applied on this path"
+    )
