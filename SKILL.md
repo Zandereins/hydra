@@ -825,11 +825,15 @@ If slug is empty after sanitization, use `review`.
 
 **Directory setup (first run):**
 ```bash
-# Anti-exfiltration: refuse to write through a symlinked .hydra (or reports/) — mirrors the
-# Step 1 policy-detection symlink guard. Checking reports/ too closes the real-dir-with-
-# symlinked-subdir variant. Keep mkdir -p so legitimate re-runs on a real dir still work.
-for d in .hydra .hydra/reports; do
-  [ -L "$d" ] && { echo "[Hydra] $d is a symlink -- refusing to write. Aborting." >&2; exit 1; }
+# Anti-exfiltration: refuse to write through anything symlinked under .hydra — mirrors the
+# Step 1 policy-detection guard, which checks FILES (`[ -f "$p" ] && [ ! -L "$p" ]`), not just
+# their parent directory. Every write target is enumerated, not only the two directories: a
+# reviewed repo can commit `.hydra/audit.log` (or `.gitignore`/`state.json`) as a symlink, it
+# survives `git clone`, both directories are then real so a directory-only loop is a no-op, and
+# `>`/`>>` plus the following `chmod` land on the link target outside the repo.
+# Keep mkdir -p so legitimate re-runs on a real dir still work.
+for p in .hydra .hydra/reports .hydra/.gitignore .hydra/state.json .hydra/audit.log; do
+  [ -L "$p" ] && { echo "[Hydra] $p is a symlink -- refusing to write. Aborting." >&2; exit 1; }
 done
 mkdir -p .hydra/reports && chmod 700 .hydra && chmod 700 .hydra/reports
 echo '*' > .hydra/.gitignore && chmod 600 .hydra/.gitignore
@@ -913,7 +917,10 @@ chmod 600 .hydra/state.json
    ```bash
    CHECKSUM=$(shasum -a 256 "$REPORT_PATH" | cut -d' ' -f1)
    # Prepend integrity line (checksum covers everything BELOW this line)
-   { echo "<!-- hydra-integrity: sha256:${CHECKSUM} session:${HYDRA_SESSION} scope:body -->"; cat "$REPORT_PATH"; } > "${REPORT_PATH}.tmp" && mv "${REPORT_PATH}.tmp" "$REPORT_PATH"
+   # The redirect creates a FRESH inode at the current umask, so re-apply 0600 before the rename
+   # or `mv` silently replaces the 0600 report with a umask-default (typically 0644) one.
+   { echo "<!-- hydra-integrity: sha256:${CHECKSUM} session:${HYDRA_SESSION} scope:body -->"; cat "$REPORT_PATH"; } > "${REPORT_PATH}.tmp" \
+     && chmod 600 "${REPORT_PATH}.tmp" && mv "${REPORT_PATH}.tmp" "$REPORT_PATH"
    ```
    If `shasum` is unavailable: `openssl dgst -sha256 "$REPORT_PATH" | awk '{print $NF}'`.
    If both fail: skip integrity line (non-critical for local gitignored reports).
