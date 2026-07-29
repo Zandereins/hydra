@@ -168,7 +168,11 @@ Note: focus flags for Volta or Navigator auto-escalate to deep mode when used wi
    HYDRA_BOUNDARY_R="HYDRA-$(gen_token)-R" || exit 1   # reviewer stage
    HYDRA_BOUNDARY_C="HYDRA-$(gen_token)-C" || exit 1   # chairman stage
    HYDRA_SESSION="HYDRA-$(gen_token)" || exit 1         # non-secret per-run id (audit.log + report integrity); NOT a boundary token, so it is safe to write to disk
-   printf '%s\n%s\n%s\n%s\n' "$HYDRA_BOUNDARY_A" "$HYDRA_BOUNDARY_R" "$HYDRA_BOUNDARY_C" "$HYDRA_SESSION"
+   # Session scratch dir, created HERE and not in Step 3: Step 1's policy-root resolution already
+   # needs it (paths are passed to the shell through a file, never spliced into command text), and
+   # a dir created in Step 3 does not exist yet at Step 1.
+   HYDRA_TMP=$(mktemp -d "${TMPDIR:-/tmp}/hydra-XXXXXX") && chmod 700 "$HYDRA_TMP" || exit 1
+   printf '%s\n%s\n%s\n%s\n%s\n' "$HYDRA_BOUNDARY_A" "$HYDRA_BOUNDARY_R" "$HYDRA_BOUNDARY_C" "$HYDRA_SESSION" "$HYDRA_TMP"
    ```
 
    Use `{{BOUNDARY}}` = `HYDRA_BOUNDARY_A` in advisor preambles (Step 3).
@@ -485,9 +489,11 @@ After Mies+ Bash returns:
 
 **Codex invocation per advisor** (each is a separate Bash tool call):
 
-First, create temp dir AND resolve the review-target root (separate Bash call):
+First, resolve the review-target root (separate Bash call). `HYDRA_TMP` already exists — it is
+created once in Step 0.6 alongside the boundary tokens and printed there; hardcode that value here,
+as with `CODEX_SCRIPT_PATH` (shell state does not persist between tool calls).
 ```bash
-HYDRA_TMP=$(mktemp -d "${TMPDIR:-/tmp}/hydra-XXXXXX") && chmod 700 "$HYDRA_TMP" && echo "$HYDRA_TMP"
+HYDRA_TMP="{{HYDRA_TMP_PATH}}"
 # TARGET_ROOT: the repo root of the code under review, used as Codex's --cwd so its
 # read-only sandbox roots at the review target (cross-repo: review files live in repo B
 # while /hydra is invoked from repo A). Derive it from the directory Hydra ALREADY read
@@ -722,9 +728,11 @@ SERIOUS by Cassandra and MODERATE by Navigator as two distinct findings.
   findings (the zero-finding unanimous override below is unaffected). Applies to this combination ONLY
   -- do not generalise: `deep --no-codex` alone (full-scope ceiling 85, partial 75) and
   `deep --no-review` alone (full 100, partial 85) both keep the Deep thresholds.
-  All ceilings quoted here are FULL-scope unless stated; the partial-scope figure is 10 lower
-  wherever the evidence cap applies, which is every diff-anchored review and every narrowed
-  `hydra this`. Both rows are pinned by tests/unit/test_prompt_surface.py.
+  All ceilings quoted here are FULL-scope unless stated. The partial-scope figure is up to 10 lower
+  wherever the evidence cap applies (every diff-anchored review and every narrowed `hydra this`) --
+  "up to", because the clamp at 100 absorbs the difference in plain `deep`, whose full and partial
+  ceilings are both 100. Both rows are pinned by tests/unit/test_prompt_surface.py; read the numbers
+  off that matrix rather than deriving them here.
 
 **Zero-finding unanimous override:** If ALL of these hold:
 - `AGREE_COUNT == EXPECTED_ADVISORS` (unanimous)

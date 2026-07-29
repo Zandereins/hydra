@@ -240,7 +240,11 @@ def test_every_boundary_wrapped_region_is_closed() -> None:
     closed once per advisor, so the assertion is on the SET of region names, not on arity.
     """
     unclosed: list[str] = []
-    for path in sorted((REPO / "references").glob("*.md")):
+    # SKILL.md too: it opens `--- PREVIOUS TOP ACTIONS [...] ---` around the iteration-mode block,
+    # which is read back from the reviewed repo's `.hydra/` and is therefore untrusted like any
+    # other data region. Leaving it out would guard the references and not the file that ships
+    # the most security-relevant wrapping.
+    for path in [SKILL, *sorted((REPO / "references").glob("*.md"))]:
         text = path.read_text(encoding="utf-8")
         opened = {m.group(1).strip() for m in _REGION_OPEN.finditer(text)}
         closed = {m.group(1).strip() for m in _REGION_CLOSE.finditer(text)}
