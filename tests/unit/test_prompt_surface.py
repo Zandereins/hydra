@@ -137,6 +137,9 @@ _CONSTANTS = {
     # `* <int>` on the same line cannot silently substitute a different constant.
     "agreement": r"agreement\s*=\s*\(AGREE_COUNT.*?\*\s*(\d+)",
     "evidence": r"evidence\s*=\s*\(VERIFIED_COUNT.*?\*\s*(\d+)",
+    # The partial-scope cap three lines below `evidence`. Extracted rather than assumed: without it
+    # this guard models only the full-scope path, which is how a widened cap shipped green in #43.
+    "partial_cap": r"evidence\s*=\s*min\(evidence,\s*(\d+)\)",
     "cross": r"cross_model\s+=\s*min\(CROSS_MODEL_COUNT \* \d+, (\d+)\)",
     "corroboration": r"corroboration\s+=\s*min\(CORROBORATED_COUNT \* \d+, (\d+)\)",
     "clamp": r"clamp\(raw_score, \d+, (\d+)\)",
@@ -171,19 +174,25 @@ def test_every_configuration_can_reach_its_high_threshold() -> None:
 
     exception_present = bool(_DEEP_BOTH_USES_STANDARD.search(skill))
     unreachable: list[str] = []
-    for label, cross, corroboration, mode in CONFIGS:
-        ceiling = min(
-            const["agreement"]
-            + const["evidence"]
-            + (const["cross"] if cross else 0)
-            + (const["corroboration"] if corroboration else 0),
-            const["clamp"],
-        )
-        applies = mode
-        if label == "deep --no-codex --no-review" and exception_present:
-            applies = "standard"
-        if ceiling < const[applies]:
-            unreachable.append(f"{label}: ceiling {ceiling} < {applies} HIGH {const[applies]}")
+    # Every config is checked at BOTH scopes. A diff-anchored review (branch/iterate/pr) and a
+    # narrowed `hydra this` both set IS_PARTIAL_SCOPE, which caps evidence -- and a branch review
+    # is ALWAYS diff-anchored, so the partial row is the default path there, not an edge case.
+    for scope, evidence_term in (("full", const["evidence"]), ("partial", const["partial_cap"])):
+        for label, cross, corroboration, mode in CONFIGS:
+            ceiling = min(
+                const["agreement"]
+                + evidence_term
+                + (const["cross"] if cross else 0)
+                + (const["corroboration"] if corroboration else 0),
+                const["clamp"],
+            )
+            applies = mode
+            if label == "deep --no-codex --no-review" and exception_present:
+                applies = "standard"
+            if ceiling < const[applies]:
+                unreachable.append(
+                    f"{label} @ {scope} scope: ceiling {ceiling} < {applies} HIGH {const[applies]}"
+                )
 
     assert not unreachable, (
         "HIGH is arithmetically unreachable in a documented configuration -- a review there can "
