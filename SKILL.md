@@ -168,11 +168,7 @@ Note: focus flags for Volta or Navigator auto-escalate to deep mode when used wi
    HYDRA_BOUNDARY_R="HYDRA-$(gen_token)-R" || exit 1   # reviewer stage
    HYDRA_BOUNDARY_C="HYDRA-$(gen_token)-C" || exit 1   # chairman stage
    HYDRA_SESSION="HYDRA-$(gen_token)" || exit 1         # non-secret per-run id (audit.log + report integrity); NOT a boundary token, so it is safe to write to disk
-   # Session scratch dir, created HERE and not in Step 3: Step 1's policy-root resolution already
-   # needs it (paths are passed to the shell through a file, never spliced into command text), and
-   # a dir created in Step 3 does not exist yet at Step 1.
-   HYDRA_TMP=$(mktemp -d "${TMPDIR:-/tmp}/hydra-XXXXXX") && chmod 700 "$HYDRA_TMP" || exit 1
-   printf '%s\n%s\n%s\n%s\n%s\n' "$HYDRA_BOUNDARY_A" "$HYDRA_BOUNDARY_R" "$HYDRA_BOUNDARY_C" "$HYDRA_SESSION" "$HYDRA_TMP"
+   printf '%s\n%s\n%s\n%s\n' "$HYDRA_BOUNDARY_A" "$HYDRA_BOUNDARY_R" "$HYDRA_BOUNDARY_C" "$HYDRA_SESSION"
    ```
 
    Use `{{BOUNDARY}}` = `HYDRA_BOUNDARY_A` in advisor preambles (Step 3).
@@ -232,6 +228,17 @@ Provider note: Codex modes -> `Code sent to Claude (Anthropic) + Codex (OpenAI).
 Opus-only modes -> `Code sent to Claude (Anthropic) only.`
 
 ### Step 1: Context Enrichment
+
+**Session scratch dir — create it first, here.** Both the policy-root resolution below and Step 3
+pass filesystem paths to the shell through a file rather than splicing them into command text, so
+the directory must exist before either. It is created in Step 1 and not in Step 0.6 because Step 0.6
+runs BEFORE the Step 0.9 cost gate: a user who declines there must not be left with an orphaned
+directory, since the Step 7 cleanup only runs at the end of a review that actually happened.
+```bash
+HYDRA_TMP=$(mktemp -d "${TMPDIR:-/tmp}/hydra-XXXXXX") && chmod 700 "$HYDRA_TMP" && echo "$HYDRA_TMP"
+```
+Hardcode the printed value as `{{HYDRA_TMP_PATH}}` wherever it is used later — shell state does not
+persist between tool calls (same rule as `CODEX_SCRIPT_PATH`).
 
 Quickly scan (< 30 seconds):
 - `CLAUDE.md` in project root (use cwd as root if not a git repo)
@@ -490,7 +497,7 @@ After Mies+ Bash returns:
 **Codex invocation per advisor** (each is a separate Bash tool call):
 
 First, resolve the review-target root (separate Bash call). `HYDRA_TMP` already exists — it is
-created once in Step 0.6 alongside the boundary tokens and printed there; hardcode that value here,
+created once at the top of Step 1 and printed there; hardcode that value here,
 as with `CODEX_SCRIPT_PATH` (shell state does not persist between tool calls).
 ```bash
 HYDRA_TMP="{{HYDRA_TMP_PATH}}"
@@ -878,6 +885,10 @@ If slug is empty after sanitization, use `review`.
 # reviewed repo can commit `.hydra/audit.log` (or `.gitignore`/`state.json`) as a symlink, it
 # survives `git clone`, both directories are then real so a directory-only loop is a no-op, and
 # `>`/`>>` plus the following `chmod` land on the link target outside the repo.
+# SCOPE, stated so this list is not mistaken for exhaustive: it covers every FIXED-name write
+# target. The report and its `.findings.json` sidecar are deliberately absent -- their names carry
+# a to-the-second timestamp plus a title-derived slug, so an attacker cannot plant a symlink at a
+# path they cannot predict. If report naming ever becomes deterministic, add them here.
 # Keep mkdir -p so legitimate re-runs on a real dir still work.
 for p in .hydra .hydra/reports .hydra/.gitignore .hydra/state.json .hydra/audit.log; do
   [ -L "$p" ] && { echo "[Hydra] $p is a symlink -- refusing to write. Aborting." >&2; exit 1; }
@@ -1052,8 +1063,9 @@ No agents spawned, no cost.
 **`hydra tensions` trigger:** Show all Disputed Points from the verdict. No cost.
 **`hydra blind-spots` trigger:** Show Blind Spots + Shared Assumptions from report. No cost.
 
-**Cleanup:** Remove the session temp directory. It is created in Step 0.6 for EVERY run, not only
-when Codex is used, so this runs on every path — substitute the value printed there, since shell
+**Cleanup:** Remove the session temp directory. It is created at the top of Step 1 for EVERY run
+that clears the cost gate, not only when Codex is used, so this runs on every path — substitute the
+value printed there, since shell
 state does not persist between tool calls and a bare `$HYDRA_TMP` here would expand to empty and
 delete nothing:
 ```bash
