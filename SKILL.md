@@ -361,8 +361,9 @@ in Step 5.
 **Set `IS_PARTIAL_SCOPE`:** true whenever the advisors were shown LESS than the full content of the
 reviewed files -- either because the review is diff-anchored (`IS_WINDOWED = true`) or because a
 `hydra this` selection was narrowed to a line range (Step 0.3). Compute `SHOWN_LINES` (source lines
-actually placed in the prompt) and `TOTAL_LINES` (sum of `wc -l` over the reviewed files), then set
-`IS_PARTIAL_SCOPE = IS_WINDOWED OR SHOWN_LINES < TOTAL_LINES`.
+actually placed in the prompt) and reuse `EST_TOTAL_LINES` from the Scope-metrics block below as the
+denominator -- it is the same quantity (`wc -l` over the reviewed files), so do NOT introduce a
+second name for it. Then set `IS_PARTIAL_SCOPE = IS_WINDOWED OR SHOWN_LINES < EST_TOTAL_LINES`.
 Keep `IS_WINDOWED` itself narrow (diff-anchored only): `is_windowed` and `scope_pct` are persisted
 with that meaning in `state.json`, `audit.log` and the report frontmatter, so widening it would
 change four consumers at once. **A narrowed `hydra this` is partial WITHOUT being windowed** --
@@ -376,7 +377,9 @@ withheld -- the line ranges not shown, per reviewed file, e.g. `dependencies.py:
 code was withheld will reason about it anyway: an unused-looking import or a missing test is
 indistinguishable from a real one when its only use or its test file sits in the hidden region.
 
-**Scope metrics** (computed when `IS_WINDOWED = true`, used by report-template + in-conversation summary):
+**Scope metrics** (used by report-template + in-conversation summary). `EST_TOTAL_LINES` is computed
+whenever `IS_PARTIAL_SCOPE` is true, since the narrowed-`hydra this` SCOPE line needs the same
+denominator; `DIFF_LINES` and `SCOPE_PCT` remain diff-only and stay gated on `IS_WINDOWED = true`:
 - `DIFF_LINES`: count non-header lines in the assembled diff_context
 - `EST_TOTAL_LINES`: sum of `wc -l` for all reviewed files
 - `SCOPE_PCT`: integer 0-100. Compute as `min(100, int(round(DIFF_LINES / max(EST_TOTAL_LINES, 1) * 100)))`. The upper clamp handles deleted-only branches where `DIFF_LINES` may exceed `EST_TOTAL_LINES`; the `int()` cast guarantees an integer (never a float like `46.0`) for downstream schema consumers.
@@ -649,7 +652,7 @@ fall back to regex extraction from prose):
 EXPECTED_ADVISORS = 4 (standard) or 6 (deep)  // always expected, not responding
 TOTAL_FINDINGS    = sum of all findings across responding advisors
 IS_WINDOWED       = true if diff_context was used (branch/iterate/pr)
-IS_PARTIAL_SCOPE  = IS_WINDOWED OR SHOWN_LINES < TOTAL_LINES   // Step 1; also true for a narrowed `hydra this`
+IS_PARTIAL_SCOPE  = IS_WINDOWED OR SHOWN_LINES < EST_TOTAL_LINES   // Step 1; also true for a narrowed `hydra this`
 
 // --- Base components ---
 agreement      = (AGREE_COUNT / EXPECTED_ADVISORS) * 40
@@ -725,7 +728,7 @@ label is consistent with the displayed number in either mode.
 **Scope indicator** (always show when `IS_PARTIAL_SCOPE` is true -- i.e. for BOTH a diff-anchored review and a narrowed `hydra this`):
 Print after confidence line, choosing by which kind of partial it is:
 - `IS_WINDOWED`: `SCOPE {{DIFF_LINES}}/{{EST_TOTAL_LINES}} lines ({{SCOPE_PCT}}%) -- diff-anchored review`
-- narrowed `hydra this`: `SCOPE {{SHOWN_LINES}}/{{TOTAL_LINES}} lines -- partial-file review; {{OMITTED_RANGE}} not reviewed`
+- narrowed `hydra this`: `SCOPE {{SHOWN_LINES}}/{{EST_TOTAL_LINES}} lines -- partial-file review; {{OMITTED_RANGE}} not reviewed`
 If 0 findings + partial scope: append warning: `Note: 0 findings on limited scope does NOT validate unreviewed code -- code outside the reviewed range was not read, including any file or region that restates a value changed here (a cross-file invariant whose other side did not change is structurally invisible to a partial review).`
 
 **Display format:** `Confidence: {{SCORE}}% ({{LABEL}})` — e.g., `Confidence: 78% (HIGH)`.
@@ -775,7 +778,7 @@ Pre-computed injections before RULES:
 - `DISPUTES: {{[CONTRADICTED] findings with both positions}}`
 - `SERIOUS+ FINDINGS: {{list with attribution}}`
 - `COVERAGE GAPS: {{findings missing file refs}}`
-- `SCOPE: is_windowed={{IS_WINDOWED}} ({{SCOPE_PCT_OR_NULL}}% of changed lines)` -- windowed reviews see only the diff window; the chairman applies the GROUNDING windowed exception
+- `SCOPE: is_partial={{IS_PARTIAL_SCOPE}} is_windowed={{IS_WINDOWED}} ({{SCOPE_PCT_OR_NULL}}% of changed lines){{IF partial_not_windowed}}; {{OMITTED_RANGE}} not shown to advisors{{ENDIF}}` -- partial-scope reviews (diff-anchored OR a narrowed `hydra this`) see only part of the code; the chairman applies the GROUNDING partial-scope exception. Send `is_partial` FIRST: keying that exception on `is_windowed` alone would demote a finding whose cited source sits in a region the orchestrator withheld, i.e. punish the advisor for the orchestrator's scope cut.
 
 Chairman focuses on: dispute resolution, synthesis of SERIOUS+ findings, Verify block.
 Orchestrator handles: Consensus Map, confidence counts, signal line, formatting.
