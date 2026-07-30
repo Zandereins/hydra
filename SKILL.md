@@ -648,6 +648,39 @@ Print structured output status: `[Hydra] {{Name}}: {{valid_structured|valid_pros
 - If Sentinel ran on Opus: `{{SENTINEL_MODEL}}` = "Opus"
 - If BOTH ran on Opus: remove cross-model rules from chairman prompt.
 
+### Step 3.5: Coverage Gate (runs in EVERY mode, including `--no-review`)
+
+Advisors declare what they could not read (`untraced_links`, `references/advisors.md`). This step
+is the only place that signal can act: after it, the substrate is frozen for reviewers and chairman.
+
+1. Collect `untraced_links` from every responding advisor (VALID_STRUCTURED, VALID_PROSE, DEGRADED).
+   For prose-only responses, read the `UNTRACED LINKS:` line.
+2. Normalise each anchor (strip whitespace/quotes) and count how many DISTINCT advisors named it.
+   An anchor named by **2 or more advisors** is a **blocking coverage gap**.
+3. For each blocking gap, do exactly ONE of:
+   - **(a) Resolve** — read the named file and add its content, or a measured summary of it, to the
+     substrate handed to reviewers AND chairman, labelled `ORCHESTRATOR VERIFICATION (measured
+     after the advisors ran)`. Facts obtained this way outrank advisor claims about that anchor;
+     say so in the label.
+   - **(b) Forward** — when resolving is impossible or out of scope, state the unresolved gap
+     verbatim in the reviewer AND chairman prompts, with the rule that a finding depending on it
+     may not be promoted above `[HYPOTHESIS]` and may not be rated CATASTROPHIC.
+4. Print: `[Hydra] Coverage gate: {{N}} blocking gap(s) -- {{resolved|forwarded}}.`
+   With none: `[Hydra] Coverage gate: clear.`
+5. Single-advisor (non-blocking) gaps are not resolved; list them for the chairman only.
+
+**Never auto-fetch.** Only read files under the review target's repo root, and only the anchors the
+advisors actually named. Silently widening scope would ship un-disclosed sibling files to the model
+provider — the class of defect PR #45 closed.
+
+**Why this gate exists (measured 2026-07-29, external deep security review).** The orchestrator
+scoped 3 files while the trust chain spanned >=6 modules. THREE of six advisors reported the gap and
+the review phase launched anyway. Two CATASTROPHIC findings rested entirely on one unread file, and
+BOTH peer reviewers UPHELD them — given the same blind substrate, the review layer amplified the
+orchestrator's scope error instead of correcting it. Only an out-of-band measurement taken after the
+reviewers had launched refuted it. More reviewers cannot fix a substrate defect; this gate can.
+This runs even under `--no-review`, where the gap would otherwise reach the chairman unannounced.
+
 ### Step 4: Peer Review (parallel)
 
 **Skip entirely** only under `--no-review` (in standard or deep). Otherwise the review phase runs in BOTH standard (reviewers see advisors A, B, E, F) and deep (A-F).
