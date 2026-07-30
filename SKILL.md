@@ -666,7 +666,14 @@ is the only place that signal can act: after it, the substrate is frozen for rev
      verbatim in the reviewer AND chairman prompts, with the rule that a finding depending on it
      may not be promoted above `[HYPOTHESIS]` and may not be rated CATASTROPHIC.
 4. Print: `[Hydra] Coverage gate: {{N}} blocking gap(s) -- {{resolved|forwarded}}.`
-   With none: `[Hydra] Coverage gate: clear.`
+   Print `[Hydra] Coverage gate: clear.` ONLY when the advisors named **zero** anchors in total.
+   When anchors exist but none reached the threshold, print
+   `[Hydra] Coverage gate: no blocking gap; {{M}} single-advisor anchor(s) forwarded.` and list them.
+   **Never say "clear" while anchors exist.** Matching is exact-string today, so one unread file
+   reported as `src/a.py` by one advisor and `./src/a.py` by another counts as two single-advisor
+   anchors and stays below the threshold. A "clear" there would be a false all-clear on a review
+   that is in fact blind — the failure mode this gate exists to prevent, restated one level up.
+   If two anchors look like the same file to you, treat them as one and resolve it.
 5. Single-advisor (non-blocking) gaps are not resolved; list them for the chairman only.
 
 **Anchor containment — MANDATORY, and mechanical, not a promise.** `untraced_links` is written by
