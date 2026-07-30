@@ -349,3 +349,59 @@ def test_hydra_symlink_guard_is_universal_not_an_enumeration() -> None:
         "needing to predict the report name. Restore a `find .hydra -type l` rejection; do not "
         "replace it with a list."
     )
+
+
+# 8. An advisor that could not read a decisive file had nowhere to SAY so in machine-readable form,
+#    so the signal died between the advisor phase and the peer review. Measured 2026-07-29 on a
+#    deep security review of external OSS: the orchestrator scoped 3 files while the trust chain
+#    spanned >=6 modules, THREE of six advisors reported the gap in prose, and the review phase
+#    launched anyway. Two CATASTROPHIC findings rested entirely on one unread file, and BOTH peer
+#    reviewers UPHELD them -- they had been handed the same blind substrate, so the review layer
+#    amplified the orchestrator's scope error instead of correcting it. The traced-vs-assumed
+#    ledger that eventually caught it was an ad-hoc sentence typed into that single run's prompt,
+#    not a property of the skill: the next run would have lost it silently. This guard pins the
+#    ledger into the prompt surface so it cannot regress to ad-hoc again.
+def test_common_preamble_requires_an_untraced_links_ledger() -> None:
+    """Every advisor must declare what it could NOT read, in prose AND in the JSON epilog.
+
+    Checks the example too: a mandatory field missing from the worked example is a doc-vs-code
+    divergence, and advisors copy the example's shape.
+    """
+    text = ADVISORS.read_text()
+    for marker in (PREAMBLE_START, PREAMBLE_END):
+        assert marker in text, (
+            f"advisors.md no longer contains {marker!r}, so this guard can no longer locate "
+            "the Common Preamble. Fix the marker; do not delete the test."
+        )
+    block = text[text.index(PREAMBLE_START) : text.index(PREAMBLE_END)]
+
+    # Form, not mere presence: the block's own explanatory text quotes `UNTRACED LINKS:` inline,
+    # so a substring check stays green even when the section heading itself is gone. Caught by
+    # mutation while writing this guard -- the weaker assertion passed against a mutated file.
+    assert re.search(r"^UNTRACED LINKS:$", block, re.MULTILINE), (
+        "The Common Preamble no longer requires an `UNTRACED LINKS:` prose line. Without it an "
+        "advisor has no place to name a file it could not read, the orchestrator cannot tell WHICH "
+        "anchor is missing, and the Step 3.5 coverage gate has nothing to branch on -- the exact "
+        "failure measured on 2026-07-29, where both peer reviewers amplified a finding that rested "
+        "on an unread file."
+    )
+    # Same form-not-presence rule as above: the name also appears in the prose reference and in
+    # the worked example, so anchor on the field DECLARATION at the start of a line.
+    assert re.search(r"^untraced_links \(", block, re.MULTILINE), (
+        "The structured-output field specification no longer declares `untraced_links`. The prose "
+        "line alone is not machine-readable, so the coverage gate cannot consume it."
+    )
+
+    example = next(
+        (line for line in block.splitlines() if line.lstrip().startswith('{"advisor"')), None
+    )
+    assert example is not None, (
+        "The worked JSON example disappeared from the Common Preamble, so this guard can no longer "
+        "check it for field drift. Restore the example; do not delete the assertion."
+    )
+    assert '"untraced_links"' in example, (
+        "`untraced_links` is specified as a required field but is absent from the worked JSON "
+        "example. Advisors copy the example's shape, so a field missing there is a field missing "
+        "at runtime -- and a spec contradicting its own example is precisely the doc-vs-code "
+        "divergence this surface exists to prevent."
+    )

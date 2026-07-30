@@ -39,6 +39,14 @@ CHAIN: `<file>:<line_range>` -> `<code_construct>` -> `<assumption>` -> `<failur
 All 5 chain links filled with code-referenced content = [VERIFIED].
 Any gap in the chain = [HYPOTHESIS]. The chain is IN ADDITION to your finding format.
 
+UNTRACED LINKS:
+End your prose with a line `UNTRACED LINKS:` naming every file path or symbol you reasoned about
+but could NOT read, comma-separated, or the literal `none`. An assumption about code you were not
+shown is [HYPOTHESIS] -- never [VERIFIED] -- however strong the inference. Naming the gap is not a
+weakness in your analysis; it is the signal that lets the orchestrator close the gap BEFORE the
+review phase runs, so a finding that rests on an unread file cannot be amplified downstream.
+Mirror the same list in the `untraced_links` JSON field below.
+
 MATERIALITY:
 Report only material findings. If fewer than 3 material issues exist, report what you
 find and state "No further findings in scope." If PRIMARILY about another advisor's
@@ -85,7 +93,10 @@ the POSITION line. Do NOT wrap the JSON in markdown code fences. Use these exact
 
 Fields: advisor (your ID: cassandra|mies_plus|navigator|volta|sentinel|echo),
 position (APPROVE|CONCERN|REJECT),
-findings (array of objects, empty array if 0 findings).
+findings (array of objects, empty array if 0 findings),
+untraced_links (array of strings, `[]` when nothing was untraced) -- the file paths or symbols you
+reasoned about but could not read. Advisor-level, NOT per-finding: several findings usually share
+one missing file. Must match the `UNTRACED LINKS:` prose line.
 
 Each finding: id, title, severity (CATASTROPHIC|SERIOUS|MODERATE),
 evidence_label (VERIFIED|HYPOTHESIS), hypothesis_confidence (one of "HIGH", "MEDIUM",
@@ -109,7 +120,7 @@ MODERATE; CONCERN = any SERIOUS finding OR 5+ MODERATE; REJECT = CATASTROPHIC or
 
 Example (structure only -- do NOT copy content):
 ---HYDRA-STRUCTURED [abc123]---
-{"advisor":"cassandra","position":"CONCERN","findings":[{"id":"C-1","title":"Null deref on empty input","severity":"SERIOUS","evidence_label":"VERIFIED","hypothesis_confidence":null,"file":"src/main.py","lines":"42-45","chain":{"file_line":"src/main.py:42-45","code_construct":"dict lookup without key check","assumption":"input is non-empty","failure_mode":"KeyError on empty dict","impact":"500 error on API call"}}]}
+{"advisor":"cassandra","position":"CONCERN","untraced_links":["src/db/session.py"],"findings":[{"id":"C-1","title":"Null deref on empty input","severity":"SERIOUS","evidence_label":"VERIFIED","hypothesis_confidence":null,"file":"src/main.py","lines":"42-45","chain":{"file_line":"src/main.py:42-45","code_construct":"dict lookup without key check","assumption":"input is non-empty","failure_mode":"KeyError on empty dict","impact":"500 error on API call"}}]}
 ---END-HYDRA-STRUCTURED [abc123]---
 
 The JSON MUST match your prose findings exactly -- same IDs, same severities, same labels.
