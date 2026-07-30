@@ -405,3 +405,40 @@ def test_common_preamble_requires_an_untraced_links_ledger() -> None:
         "at runtime -- and a spec contradicting its own example is precisely the doc-vs-code "
         "divergence this surface exists to prevent."
     )
+
+
+# 9. The ledger (8) is only half the mechanism: it makes the gap machine-readable, but the gate in
+#    SKILL.md is what acts on it. An independent cross-model review of the commit that introduced
+#    both pointed out that guard 8 reads ONLY advisors.md, so Step 3.5 could be deleted or weakened
+#    while the suite stayed green. The same review found the first draft of the gate promised
+#    "only read files under the review target's repo root" in PROSE while instructing the
+#    orchestrator to read an anchor written by advisors that have just processed UNTRUSTED code --
+#    a file-read primitive guarded by a sentence. Both properties are pinned here.
+def test_coverage_gate_exists_and_contains_its_anchor_enforcement() -> None:
+    """Step 3.5 must sit before peer review and enforce anchor containment mechanically."""
+    text = SKILL.read_text()
+
+    gate = re.search(r"^### Step 3\.5:", text, re.MULTILINE)
+    assert gate, (
+        "SKILL.md no longer defines `### Step 3.5:`. Without it, an advisor's `untraced_links` "
+        "signal has nowhere to act and dies before peer review -- the exact 2026-07-29 failure "
+        "where both reviewers amplified a finding resting on an unread file."
+    )
+    review = re.search(r"^### Step 4: Peer Review", text, re.MULTILINE)
+    assert review, (
+        "SKILL.md no longer defines `### Step 4: Peer Review`, so this guard can no longer check "
+        "the gate's ordering. Fix the marker; do not delete the test."
+    )
+    assert gate.start() < review.start(), (
+        "Step 3.5 must come BEFORE Step 4. After the review phase starts the substrate is frozen, "
+        "so a gate placed later cannot close the gap it exists to close."
+    )
+
+    block = text[gate.start() : review.start()]
+    assert "realpath" in block and "-L " in block, (
+        "The coverage gate no longer carries a mechanical containment check (realpath + symlink "
+        "rejection) for anchors. `untraced_links` is written by advisors that have just processed "
+        "UNTRUSTED code, so resolving an anchor without enforced containment is a file-read "
+        "primitive. A prose promise is not an enforcement rule -- that is the precise defect class "
+        "this project found in an external target on 2026-07-29."
+    )
