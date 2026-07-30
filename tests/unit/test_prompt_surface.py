@@ -349,3 +349,96 @@ def test_hydra_symlink_guard_is_universal_not_an_enumeration() -> None:
         "needing to predict the report name. Restore a `find .hydra -type l` rejection; do not "
         "replace it with a list."
     )
+
+
+# 8. An advisor that could not read a decisive file had nowhere to SAY so in machine-readable form,
+#    so the signal died between the advisor phase and the peer review. Measured 2026-07-29 on a
+#    deep security review of external OSS: the orchestrator scoped 3 files while the trust chain
+#    spanned >=6 modules, THREE of six advisors reported the gap in prose, and the review phase
+#    launched anyway. Two CATASTROPHIC findings rested entirely on one unread file, and BOTH peer
+#    reviewers UPHELD them -- they had been handed the same blind substrate, so the review layer
+#    amplified the orchestrator's scope error instead of correcting it. The traced-vs-assumed
+#    ledger that eventually caught it was an ad-hoc sentence typed into that single run's prompt,
+#    not a property of the skill: the next run would have lost it silently. This guard pins the
+#    ledger into the prompt surface so it cannot regress to ad-hoc again.
+def test_common_preamble_requires_an_untraced_links_ledger() -> None:
+    """Every advisor must declare what it could NOT read, in prose AND in the JSON epilog.
+
+    Checks the example too: a mandatory field missing from the worked example is a doc-vs-code
+    divergence, and advisors copy the example's shape.
+    """
+    text = ADVISORS.read_text()
+    for marker in (PREAMBLE_START, PREAMBLE_END):
+        assert marker in text, (
+            f"advisors.md no longer contains {marker!r}, so this guard can no longer locate "
+            "the Common Preamble. Fix the marker; do not delete the test."
+        )
+    block = text[text.index(PREAMBLE_START) : text.index(PREAMBLE_END)]
+
+    # Form, not mere presence: the block's own explanatory text quotes `UNTRACED LINKS:` inline,
+    # so a substring check stays green even when the section heading itself is gone. Caught by
+    # mutation while writing this guard -- the weaker assertion passed against a mutated file.
+    assert re.search(r"^UNTRACED LINKS:$", block, re.MULTILINE), (
+        "The Common Preamble no longer requires an `UNTRACED LINKS:` prose line. Without it an "
+        "advisor has no place to name a file it could not read, the orchestrator cannot tell WHICH "
+        "anchor is missing, and the Step 3.5 coverage gate has nothing to branch on -- the exact "
+        "failure measured on 2026-07-29, where both peer reviewers amplified a finding that rested "
+        "on an unread file."
+    )
+    # Same form-not-presence rule as above: the name also appears in the prose reference and in
+    # the worked example, so anchor on the field DECLARATION at the start of a line.
+    assert re.search(r"^untraced_links \(", block, re.MULTILINE), (
+        "The structured-output field specification no longer declares `untraced_links`. The prose "
+        "line alone is not machine-readable, so the coverage gate cannot consume it."
+    )
+
+    example = next(
+        (line for line in block.splitlines() if line.lstrip().startswith('{"advisor"')), None
+    )
+    assert example is not None, (
+        "The worked JSON example disappeared from the Common Preamble, so this guard can no longer "
+        "check it for field drift. Restore the example; do not delete the assertion."
+    )
+    assert '"untraced_links"' in example, (
+        "`untraced_links` is specified as a required field but is absent from the worked JSON "
+        "example. Advisors copy the example's shape, so a field missing there is a field missing "
+        "at runtime -- and a spec contradicting its own example is precisely the doc-vs-code "
+        "divergence this surface exists to prevent."
+    )
+
+
+# 9. The ledger (8) is only half the mechanism: it makes the gap machine-readable, but the gate in
+#    SKILL.md is what acts on it. An independent cross-model review of the commit that introduced
+#    both pointed out that guard 8 reads ONLY advisors.md, so Step 3.5 could be deleted or weakened
+#    while the suite stayed green. The same review found the first draft of the gate promised
+#    "only read files under the review target's repo root" in PROSE while instructing the
+#    orchestrator to read an anchor written by advisors that have just processed UNTRUSTED code --
+#    a file-read primitive guarded by a sentence. Both properties are pinned here.
+def test_coverage_gate_exists_and_contains_its_anchor_enforcement() -> None:
+    """Step 3.5 must sit before peer review and enforce anchor containment mechanically."""
+    text = SKILL.read_text()
+
+    gate = re.search(r"^### Step 3\.5:", text, re.MULTILINE)
+    assert gate, (
+        "SKILL.md no longer defines `### Step 3.5:`. Without it, an advisor's `untraced_links` "
+        "signal has nowhere to act and dies before peer review -- the exact 2026-07-29 failure "
+        "where both reviewers amplified a finding resting on an unread file."
+    )
+    review = re.search(r"^### Step 4: Peer Review", text, re.MULTILINE)
+    assert review, (
+        "SKILL.md no longer defines `### Step 4: Peer Review`, so this guard can no longer check "
+        "the gate's ordering. Fix the marker; do not delete the test."
+    )
+    assert gate.start() < review.start(), (
+        "Step 3.5 must come BEFORE Step 4. After the review phase starts the substrate is frozen, "
+        "so a gate placed later cannot close the gap it exists to close."
+    )
+
+    block = text[gate.start() : review.start()]
+    assert "realpath" in block and "-L " in block, (
+        "The coverage gate no longer carries a mechanical containment check (realpath + symlink "
+        "rejection) for anchors. `untraced_links` is written by advisors that have just processed "
+        "UNTRUSTED code, so resolving an anchor without enforced containment is a file-read "
+        "primitive. A prose promise is not an enforcement rule -- that is the precise defect class "
+        "this project found in an external target on 2026-07-29."
+    )
