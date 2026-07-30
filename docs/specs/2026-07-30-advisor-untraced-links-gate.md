@@ -223,6 +223,105 @@ edit type that does not. R3 is not optional polish.
 
 ## 8. Nach der Implementierung
 
-Update this spec with what was learned, per project convention. If the counterfactual in section 2
-turns out NOT to hold once implemented — i.e. the gate would not have caught the observed run — that
-is itself a finding: say so and reconsider, rather than shipping the gate anyway.
+**Shipped:** PR #48, squash-merged 2026-07-30 05:55Z as `main @ c36098d`. 4 files, +397/-2.
+373 → **375 tests**, ruff and `mypy --strict` clean. Five commits: spec · ledger · Step 3.5 gate ·
+containment enforcement · false-`clear` fix.
+
+Anchors of the shipped surface (read at `c36098d`): `references/advisors.md:42-48` (prose ledger),
+`:97-99` (structured field), `SKILL.md:651-698` (Step 3.5),
+`tests/unit/test_prompt_surface.py:364` and `:417` (the two guards).
+
+### Hielt das Gegenprobe-Argument aus Abschnitt 2? — Ja, mit einer benannten Einschränkung
+
+The counterfactual holds: three advisors named the same missing file, the `>=2` threshold fires,
+and the gate acts before Step 4. Nothing about the observed run refutes the design.
+
+The qualification is real and was **not** foreseen in section 2: matching is exact-string. Had those
+three advisors written `management.ts`, `src/server/authz/policies/management.ts` and
+`./src/server/authz/policies/management.ts`, the gate would have counted three *separate*
+single-advisor anchors and stayed below the threshold — on a review that was in fact blind. Rather
+than invent a normalisation rule, `SKILL.md:672-676` now states the limitation in place and forbids
+the dangerous output: `clear` may be printed **only** when the advisor set named zero anchors in
+total. A split spelling now degrades to "no blocking gap, M anchors forwarded", never to a false
+all-clear. See "bewusst offen" below.
+
+### Abweichungen von der Spec — und warum
+
+**Die wichtigste: R2 Punkt 5 war eine Prosa-Zusage vor einem File-Read-Primitive.** The spec said
+"**Never** auto-fetch files outside the review target's repo root". Shipped instead is a mandatory
+mechanical containment filter (`SKILL.md:679-698`): anchors travel via a file — never spliced into
+command text, because a path may legitimately contain `$(...)` — and each is rejected unless it is
+relative, traversal-free, a regular non-symlink file, and `realpath`-contained under `TARGET_ROOT`.
+Anything failing a check is downgraded to *(b) Forward*, not read.
+
+This matters beyond the fix. `untraced_links` is written by advisors that have just processed
+**untrusted** code, so an attacker controlling the reviewed repo can attempt to have an anchor echoed
+back that points outside it. The spec guarded a file-read capability with a sentence — **the exact
+defect class the same session had just diagnosed in the review target** (`SECURITY.md` promising
+"strict-loopback" while the code enforced loopback-OR-LAN). An independent Codex reviewer found it
+immediately; four self-review passes would not have.
+
+Durable, and now a project rule: *the defect class you have just diagnosed elsewhere is the one you
+build next* — its shape feels familiar because you have only now finished thinking it through. After
+every external finding, check your own change against precisely that finding.
+
+**Q3 answered — yes.** Step 3.5 is titled "runs in EVERY mode, including `--no-review`"
+(`SKILL.md:651`). With no reviewers the gaps go straight to the chairman; the gate still runs.
+
+**Q2 landed in substance, not as a separate rule.** Rather than adding prose to the chairman surface,
+the *(b) Forward* branch itself now carries "may not be promoted above `[HYPOTHESIS]` and may not be
+rated CATASTROPHIC" (`SKILL.md:665-667`). This is strictly narrower than Q2 proposed — it binds only
+gaps that were actually forwarded — and it cost zero additional surface.
+
+**Q1 not done.** `untraced_links` appears nowhere in the sidecar schema (verified at `c36098d`: the
+symbol occurs only at `SKILL.md:653`, `:656`, `:679`). Therefore **R4 never fired** — no sidecar
+change was needed, and the "no extras" sentence is untouched. Q1 stays open.
+
+### Was die Guards gelehrt haben (R3)
+
+The first guard asserted `"UNTRACED LINKS:" in block` and stayed **green on a file whose block
+heading had been destroyed** — because the surrounding prose quotes the token inline as a reference.
+The same thing recurred one assertion later for `untraced_links`, which also appears in the example
+JSON and in running text.
+
+**Rule: a guard over a prose surface must never assert occurrence, only form.** The text a guard
+protects describes itself, which makes every substring check tautological. Both assertions are now
+line-anchored, and only the mutation found it — reading never would have. This is the concrete
+strengthening of the mandate in R3.
+
+**Komplement, gemessen beim Nachweis für diesen Abschnitt:** section 7 says a red guard is
+information — the inverse holds too. Mutating the prose heading `**Anchor containment — MANDATORY…**`
+left `test_coverage_gate_exists_and_contains_its_anchor_enforcement` green, which looks like a hole
+and is not one: the guard asserts the *enforcing* tokens (`realpath`, `-L `) inside the block between
+Step 3.5 and Step 4, not the sentence announcing them. Mutating those, the `### Step 3.5:` anchor,
+and the gate/review ordering turns it red three times over. **A guard that survives a mutation may
+mean the mutation missed the enforcing token — read the assertion before calling it a defect.**
+
+### Drei Prüfrunden — die fremde war die wertvollste
+
+| Runde | Fund |
+|---|---|
+| Mutation | Guard green on a destroyed file — occurrence vs. form |
+| Codex (fremdes Modell) | The gate was a file-read primitive behind a prose sentence |
+| Eigene Bewertung des Codex-Reviews | False `clear` while anchors exist |
+
+Each round found what the previous one structurally could not. The foreign round was the most
+valuable — **measured twice in two sessions now**. It costs one command. E4's claim that mechanical
+guards beat prose is unchanged; the new datum is that a *foreign* round beats a further own one.
+
+### Bewusst offen gelassen (kein Trigger, nicht erneut vorschlagen)
+
+- **Anchor normalisation** (`src/a.py` vs `./src/a.py`) — needs anchor spellings from real runs.
+  Inventing a rule now would walk into the measured trap that 4 of 5 invented invariants never fired.
+  The dangerous half — the false `clear` — is closed; the rest degrades to prior behaviour, never below.
+- **Validity degradation when an advisor omits the ledger entirely.**
+- **Q1** (sidecar persistence).
+
+### Fallenliste (Abschnitt 7) hat sich im selben Zug bewährt
+
+Two zsh traps were paid again and are now recorded there: `${PIPESTATUS[0]}` does not exist in zsh
+(it is `pipestatus`) — a verification run reported an empty `pytest_rc=`; and an unquoted
+`--include=*.ts` is swallowed by zsh with "no matches found" while a trailing `head` still exits 0,
+so two greps looked negative and never ran. Related, from the same session's re-pin work: **a grep
+with no hits is neither an acquittal nor a refutation** until the pattern has been calibrated against
+a known hit site — two over-escaped patterns returned 0 and looked like "the project fixed it".
