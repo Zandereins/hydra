@@ -22,6 +22,7 @@ uv.lock
 # Secrets and credentials must never be tracked (the global ignore only protects one machine).
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.p12
