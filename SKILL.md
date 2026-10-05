@@ -655,7 +655,16 @@ is the only place that signal can act: after it, the substrate is frozen for rev
 
 1. Collect `untraced_links` from every responding advisor (VALID_STRUCTURED, VALID_PROSE, DEGRADED).
    For prose-only responses, read the `UNTRACED LINKS:` line.
-2. Normalise each anchor (strip whitespace/quotes) and count how many DISTINCT advisors named it.
+2. Normalise each anchor and count how many DISTINCT advisors named the NORMALISED anchor. Strip
+   whitespace and quotes, then -- only when what remains is a file path, i.e. it contains a `/` or
+   ends in a file extension -- reduce it to the bare path: drop a trailing parenthesised annotation
+   (`src/a.py (LOCAL_ONLY_PREFIXES)`), a trailing line range (`src/a.py:1-126`, `src/a.py:33`) and a
+   leading `./`. Advisors cite the same unread file as `src/a.py:1-126` and as
+   `src/a.py:33-126 (PREFIXES)`; counted as raw strings those are two single-advisor anchors, and the
+   containment script below cannot open either of them. Keep the raw spelling for the report ledger;
+   count, resolve and contain on the normalised path. A symbol (no `/`, no extension) is never
+   rewritten. An anchor naming only a bare basename (`routeGuard.ts`) is not expanded either --
+   expanding it means searching, which widens scope; judge it by the same-file rule in step 4.
    An anchor named by **2 or more advisors** is a **blocking coverage gap**.
 3. For each blocking gap, do exactly ONE of:
    - **(a) Resolve** — read the named file and add its content, or a measured summary of it, to the
@@ -669,11 +678,12 @@ is the only place that signal can act: after it, the substrate is frozen for rev
    Print `[Hydra] Coverage gate: clear.` ONLY when the advisors named **zero** anchors in total.
    When anchors exist but none reached the threshold, print
    `[Hydra] Coverage gate: no blocking gap; {{M}} single-advisor anchor(s) forwarded.` and list them.
-   **Never say "clear" while anchors exist.** Matching is exact-string today, so one unread file
-   reported as `src/a.py` by one advisor and `./src/a.py` by another counts as two single-advisor
-   anchors and stays below the threshold. A "clear" there would be a false all-clear on a review
-   that is in fact blind — the failure mode this gate exists to prevent, restated one level up.
-   If two anchors look like the same file to you, treat them as one and resolve it.
+   **Never say "clear" while anchors exist.** Step 2 normalises path spellings only. Anything it does
+   not cover (a basename-only anchor, a symbol that names the same region as a path) still counts as
+   a separate single-advisor anchor and stays below the threshold. A "clear" there would be a false
+   all-clear on a review that is in fact blind — the failure mode this gate exists to prevent,
+   restated one level up. If two anchors look like the same file or region to you, treat them as one
+   and resolve it.
 5. Single-advisor (non-blocking) gaps are not resolved; list them for the chairman only.
 
 **Anchor containment — MANDATORY, and mechanical, not a promise.** `untraced_links` is written by
@@ -685,7 +695,7 @@ on paths it prints (same precondition and rationale as the Step-1 policy-file gu
 ```bash
 # TARGET_ROOT from Step 3. Anchors arrive via a FILE, never spliced into command text -- a path may
 # legitimately contain `$(...)`, and the shell would execute it (same rule as TARGET_ROOT itself).
-#   Write tool -> "{{HYDRA_TMP_PATH}}/anchors.txt", one anchor per line.
+#   Write tool -> "{{HYDRA_TMP_PATH}}/anchors.txt", one NORMALISED path anchor per line (step 2).
 TARGET_ROOT="{{TARGET_ROOT}}"
 while IFS= read -r a; do
   case "$a" in /*|~*|-*) continue ;; *..*) continue ;; esac      # absolute, home, flag-like, traversal

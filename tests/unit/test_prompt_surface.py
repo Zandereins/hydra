@@ -442,3 +442,45 @@ def test_coverage_gate_exists_and_contains_its_anchor_enforcement() -> None:
         "primitive. A prose promise is not an enforcement rule -- that is the precise defect class "
         "this project found in an external target on 2026-07-29."
     )
+
+
+# 10. Anchor spelling. The first real deep run (2026-10-05, 6 advisors) produced the same unread
+#     file as `src/x.ts:1-126` (4 advisors) and `src/x.ts:33-126 (LIST)` (2 advisors). Matched as
+#     raw strings those were separate anchors; neither could be opened by the containment script,
+#     which needs a bare path. Step 3.5 item 2 now normalises path spellings before counting. This
+#     guard pins the FORM of that rule; a guard that only checked for `./` would have passed on the
+#     old text, which used `./src/a.py` as its example of what was NOT handled.
+def test_coverage_gate_normalises_anchor_spellings_before_counting() -> None:
+    """Step 3.5 item 2 must name every spelling it normalises and feed containment bare paths."""
+    text = SKILL.read_text()
+    gate = re.search(r"^### Step 3\.5:", text, re.MULTILINE)
+    review = re.search(r"^### Step 4: Peer Review", text, re.MULTILINE)
+    assert gate and review, "Step 3.5 / Step 4 markers missing; see test_coverage_gate_exists_*."
+    block = text[gate.start() : review.start()]
+
+    item = re.search(
+        r"^2\. Normalise each anchor.*?(?=^3\. For each blocking gap)", block, re.M | re.S
+    )
+    assert item, (
+        "Step 3.5 item 2 (`2. Normalise each anchor`) is gone or no longer precedes item 3. That "
+        "paragraph is where anchor spellings are reduced to a path before the >=2-advisor count."
+    )
+    para = " ".join(item.group(0).split())  # SKILL.md hard-wraps prose; match phrases, not lines
+    for needle, why in (
+        ("NORMALISED", "count on the normalised anchor, not the raw string"),
+        ("trailing line range", "`file:1-126` and `file:33-126` are one file"),
+        ("parenthesised annotation", "`file (LIST)` and `file` are one file"),
+        ("leading `./`", "`./file` and `file` are one file"),
+        ("never rewritten", "symbols must not be turned into paths"),
+        ("bare basename", "basenames must not be expanded: that is a search, a scope widening"),
+    ):
+        assert needle in para, (
+            f"Step 3.5 item 2 lost `{needle}` ({why}). Without it the same unread file is counted "
+            "as several single-advisor anchors, stays below the blocking threshold, and the gate "
+            "can print a gap list that hides a file three advisors reported."
+        )
+    assert "one NORMALISED path anchor per line" in " ".join(block.split()), (
+        "The containment script's input is no longer specified as normalised path anchors. Raw "
+        "anchors carry `:range` suffixes and annotations, so `[ -f \"$p\" ]` fails on each and "
+        "the gate silently resolves nothing."
+    )
