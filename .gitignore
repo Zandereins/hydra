@@ -18,3 +18,14 @@ docs/generate-social-preview.py
 # Local uv artifact — CI installs via pip (.github/workflows/ci.yml), so this lock is not
 # authoritative and must not drift into the repo.
 uv.lock
+
+# Secrets and credentials must never be tracked (the global ignore only protects one machine).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.bak
+.claude/settings.local.json
