@@ -330,21 +330,29 @@ symbol `LOCAL_ONLY_API_PREFIXES` (Sentinel). Two defects, not one:
    containment step silently resolves nothing on real advisor output.
 
 **Rule (SKILL.md Step 3.5 item 2).** Only for path-shaped anchors (contains `/` or ends in an
-extension): drop a trailing parenthesised annotation, a trailing `:start[-end]` line range and a
-leading `./`; count, resolve and contain on the normalised path; keep the raw string for the report
+extension): drop a trailing parenthesised annotation, a trailing line locator (`:33`, `:1-126`,
+`:12:5`) and a leading `./`; count, resolve and contain on the normalised path; keep the raw string for the report
 ledger. Symbols are never rewritten. Bare basenames are not expanded: expanding one is a search, and
 a search widens scope, the class of defect PR #45 closed.
 
 **Guard** (`test_coverage_gate_normalises_anchor_spellings_before_counting`). Pins the FORM of the
 rule, per the earlier lesson that prose guards check form, never occurrence. Verified: red on the
-pre-change SKILL.md, red under removal of each of the 7 required phrases individually, green on the
+pre-change SKILL.md, red under removal of each of the 8 required phrases individually, green on the
 change. `./` alone was deliberately not used as a needle: the old text already contained it as its
 example of what was NOT handled, so that guard would have passed on the defect.
 
 **Not done, deliberately.** No change to `references/advisors.md`: telling advisors to emit bare
-paths shifts model output in a way no test here can pin. Normalising on the orchestrator side is
-deterministic. A basename-only alias (`routeGuard.ts:33-126`) is still a separate anchor; the
+paths shifts model output in a way no test here can pin. Normalising on the orchestrator side
+acts on text the orchestrator already holds instead of changing what the model emits. A basename-only alias (`routeGuard.ts:33-126`) is still a separate anchor; the
 existing "treat look-alikes as one" sentence is the only cover for it.
+
+**Known limits (Codex review, 2026-10-05).** (a) `#L12`-style anchors are not normalised: no run has
+produced one, and inventing the rule is the trap this section exists to avoid; reopen on a measured
+spelling. (b) A repo that contains BOTH `src/a.ts` and a file literally named `src/a.ts (X)` would
+have the second read as the first; rated LOW (needs a pathological file name, no measured instance).
+(c) The guard pins the presence and positive wording of the rule, not its polarity; text rewritten to
+say the opposite while keeping the phrases would stay green. That is the form-not-occurrence limit
+of every prose guard here, not something one more needle fixes.
 
 ### Fallenliste (Abschnitt 7) hat sich im selben Zug bewährt
 

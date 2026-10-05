@@ -658,8 +658,8 @@ is the only place that signal can act: after it, the substrate is frozen for rev
 2. Normalise each anchor and count how many DISTINCT advisors named the NORMALISED anchor. Strip
    whitespace and quotes, then -- only when what remains is a file path, i.e. it contains a `/` or
    ends in a file extension -- reduce it to the bare path: drop a trailing parenthesised annotation
-   (`src/a.py (LOCAL_ONLY_PREFIXES)`), a trailing line range (`src/a.py:1-126`, `src/a.py:33`) and a
-   leading `./`. Advisors cite the same unread file as `src/a.py:1-126` and as
+   (`src/a.py (LOCAL_ONLY_PREFIXES)`), a trailing line locator (one or more `:<n>` or `:<n>-<m>`
+   segments: `src/a.py:33`, `src/a.py:1-126`, `src/a.py:12:5`) and a leading `./`. Advisors cite the same unread file as `src/a.py:1-126` and as
    `src/a.py:33-126 (PREFIXES)`; counted as raw strings those are two single-advisor anchors, and the
    containment script below cannot open either of them. Keep the raw spelling for the report ledger;
    count, resolve and contain on the normalised path. A symbol (no `/`, no extension) is never

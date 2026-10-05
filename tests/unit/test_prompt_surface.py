@@ -468,8 +468,9 @@ def test_coverage_gate_normalises_anchor_spellings_before_counting() -> None:
     para = " ".join(item.group(0).split())  # SKILL.md hard-wraps prose; match phrases, not lines
     for needle, why in (
         ("NORMALISED", "count on the normalised anchor, not the raw string"),
-        ("trailing line range", "`file:1-126` and `file:33-126` are one file"),
-        ("parenthesised annotation", "`file (LIST)` and `file` are one file"),
+        ("trailing line locator", "`file:1-126`, `file:33` and `file:12:5` are one file"),
+        ("drop a trailing parenthesised annotation", "`file (LIST)` and `file` are one file"),
+        ("count, resolve and contain on the normalised path", "the rule must act, not just exist"),
         ("leading `./`", "`./file` and `file` are one file"),
         ("never rewritten", "symbols must not be turned into paths"),
         ("bare basename", "basenames must not be expanded: that is a search, a scope widening"),
