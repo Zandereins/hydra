@@ -445,11 +445,12 @@ def test_coverage_gate_exists_and_contains_its_anchor_enforcement() -> None:
 
 
 # 10. Anchor spelling. The first real deep run (2026-10-05, 6 advisors) produced the same unread
-#     file as `src/x.ts:1-126` (4 advisors) and `src/x.ts:33-126 (LIST)` (2 advisors). Matched as
-#     raw strings those were separate anchors; neither could be opened by the containment script,
-#     which needs a bare path. Step 3.5 item 2 now normalises path spellings before counting. This
-#     guard pins the FORM of that rule; a guard that only checked for `./` would have passed on the
-#     old text, which used `./src/a.py` as its example of what was NOT handled.
+#     file as `src/x.ts:1-126` (4 advisors), `src/x.ts:33-126 (LIST)` (1) and
+#     `LIST (src/x.ts:33-126)` (1, symbol first). Matched as raw strings those were three anchors,
+#     and none could be opened by the containment script, which needs a bare path. Step 3.5 item 2
+#     now normalises path spellings before counting. This guard pins the FORM of that rule; a guard
+#     that only checked for `./` would have passed on the old text, which used `./src/a.py` as its
+#     example of what was NOT handled.
 def test_coverage_gate_normalises_anchor_spellings_before_counting() -> None:
     """Step 3.5 item 2 must name every spelling it normalises and feed containment bare paths."""
     text = SKILL.read_text()
@@ -470,6 +471,7 @@ def test_coverage_gate_normalises_anchor_spellings_before_counting() -> None:
         ("NORMALISED", "count on the normalised anchor, not the raw string"),
         ("trailing line locator", "`file:1-126`, `file:33` and `file:12:5` are one file"),
         ("drop a trailing parenthesised annotation", "`file (LIST)` and `file` are one file"),
+        ("the path is INSIDE the parentheses", "`LIST (file:1-9)` must keep the path"),
         ("count, resolve and contain on the normalised path", "the rule must act, not just exist"),
         ("leading `./`", "`./file` and `file` are one file"),
         ("never rewritten", "symbols must not be turned into paths"),
