@@ -311,11 +311,56 @@ guards beat prose is unchanged; the new datum is that a *foreign* round beats a 
 
 ### Bewusst offen gelassen (kein Trigger, nicht erneut vorschlagen)
 
-- **Anchor normalisation** (`src/a.py` vs `./src/a.py`) — needs anchor spellings from real runs.
-  Inventing a rule now would walk into the measured trap that 4 of 5 invented invariants never fired.
-  The dangerous half — the false `clear` — is closed; the rest degrades to prior behaviour, never below.
+- ~~**Anchor normalisation**~~ — **closed 2026-10-05, see "Anchor normalisation" below.** The other
+  two items stay open.
 - **Validity degradation when an advisor omits the ledger entirely.**
 - **Q1** (sidecar persistence).
+
+### Anchor normalisation (added 2026-10-05, trigger met by the first real deep run)
+
+**Measured, not invented.** Deep security run on OmniRoute v3.8.51, 6 advisors: the same unread file
+came back as `src/server/authz/routeGuard.ts:1-126` (Mies+, Sentinel, Echo, Navigator),
+`src/server/authz/routeGuard.ts:33-126 (LOCAL_ONLY_API_PREFIXES)` (Cassandra),
+`LOCAL_ONLY_API_PREFIXES (src/server/authz/routeGuard.ts:33-126)` (Volta, symbol first, path inside
+the parentheses) and the bare symbol `LOCAL_ONLY_API_PREFIXES` (Sentinel). Three defects, not one:
+
+1. Under exact-string matching the three path spellings are three anchors, so a file named by 6
+   advisors could have shown as 4 + 1 + 1.
+2. The raw anchors cannot be fed to the containment script at all: `[ -f "$p" ]` fails on a
+   `:range` suffix or an annotation. The orchestrator had to strip them by hand, i.e. the mechanical
+   containment step silently resolves nothing on real advisor output.
+3. Found in review of this very change, not in the run: the first draft of the rule stripped a
+   trailing parenthesised group unconditionally. On Volta's symbol-first spelling that discards the
+   path and leaves the bare symbol, so one advisor's whole path ledger would have degraded to
+   symbols. The spec text itself had also mis-attributed that spelling to Cassandra and Volta;
+   checked against the raw ledger, only Cassandra used the path-first form.
+
+**Rule (SKILL.md Step 3.5 item 2).** Only for path-shaped anchors (contains `/` or ends in an
+extension): if a trailing parenthesised group is itself path-shaped, take the path from inside it
+(symbol-first spelling); otherwise drop the annotation. Then drop a trailing line locator (`:33`,
+`:1-126`, `:12:5`) and a leading `./`. Count, resolve and contain on the normalised path; keep the
+raw string for the report ledger. Symbols are never rewritten. Bare basenames are not expanded: expanding one is a search, and
+a search widens scope, the class of defect PR #45 closed.
+
+**Guard** (`test_coverage_gate_normalises_anchor_spellings_before_counting`). Pins the FORM of the
+rule, per the earlier lesson that prose guards check form, never occurrence. Verified: red on the
+pre-change SKILL.md, red under removal of each of the 9 required phrases individually, green on the
+change. `./` alone was deliberately not used as a needle: the old text already contained it as its
+example of what was NOT handled, so that guard would have passed on the defect.
+
+**Not done, deliberately.** No change to `references/advisors.md`: telling advisors to emit bare
+paths shifts model output in a way no test here can pin. Normalising on the orchestrator side
+acts on text the orchestrator already holds instead of changing what the model emits. A
+basename-only alias (`routeGuard.ts:33-126`) is still a separate anchor; the
+existing "treat look-alikes as one" sentence is the only cover for it.
+
+**Known limits (Codex review, 2026-10-05).** (a) `#L12`-style anchors are not normalised: no run has
+produced one, and inventing the rule is the trap this section exists to avoid; reopen on a measured
+spelling. (b) A repo that contains BOTH `src/a.ts` and a file literally named `src/a.ts (X)` would
+have the second read as the first; rated LOW (needs a pathological file name, no measured instance).
+(c) The guard pins the presence and positive wording of the rule, not its polarity; text rewritten to
+say the opposite while keeping the phrases would stay green. That is the form-not-occurrence limit
+of every prose guard here, not something one more needle fixes.
 
 ### Fallenliste (Abschnitt 7) hat sich im selben Zug bewährt
 
