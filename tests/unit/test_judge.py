@@ -159,3 +159,44 @@ def test_judge_degrades_after_exhausting_transient_retries(monkeypatch: pytest.M
     client = _client_raising(_Overloaded)  # always overloaded
     assert make_judge(client=client, model="m")(_GT, _CAND) is False
     assert len(client.calls) == judge_mod.JUDGE_MAX_RETRIES + 1  # initial try + N retries
+
+
+def test_judge_works_against_the_real_sdk_client() -> None:
+    """Seam test: the fakes above accept any kwargs, so an SDK signature change (anthropic
+    1.x rejects `temperature` in messages.parse) degrades EVERY verdict to NO_MATCH while
+    the rest of this file stays green. Drive the real SDK over a mocked HTTP transport
+    (no network, no billing) and require the MATCH to survive the round trip."""
+    import json
+
+    import anthropic
+
+    try:
+        import httpx2 as httpx  # anthropic >= 1.0
+    except ImportError:
+        import httpx  # anthropic < 1.0
+
+    def handler(request: "httpx.Request") -> "httpx.Response":
+        verdict = json.dumps({"reason": "same root cause", "verdict": "MATCH"})
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_test",
+                "type": "message",
+                "role": "assistant",
+                "model": "m",
+                "content": [{"type": "text", "text": verdict}],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        )
+
+    client = anthropic.Anthropic(
+        api_key="test-not-a-real-key",
+        max_retries=0,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    judge = make_judge(client=client, model="m")
+    gt: dict[str, object] = {"file": "a.js", "lines": "1", "description": "d"}
+    cand: dict[str, object] = {"file": "a.js", "lines": "1", "title": "t"}
+    assert judge(gt, cand) is True
