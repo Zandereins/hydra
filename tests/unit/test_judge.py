@@ -161,14 +161,20 @@ def test_judge_degrades_after_exhausting_transient_retries(monkeypatch: pytest.M
     assert len(client.calls) == judge_mod.JUDGE_MAX_RETRIES + 1  # initial try + N retries
 
 
-def test_judge_works_against_the_real_sdk_client() -> None:
+def test_judge_works_against_the_real_sdk_client(monkeypatch: pytest.MonkeyPatch) -> None:
     """Seam test: the fakes above accept any kwargs, so an SDK signature change (anthropic
     1.x rejects `temperature` in messages.parse) degrades EVERY verdict to NO_MATCH while
     the rest of this file stays green. Drive the real SDK over a mocked HTTP transport
     (no network, no billing) and require the MATCH to survive the round trip."""
     import json
+    import os
 
     import anthropic
+
+    # The SDK reads ANTHROPIC_* settings (base URL, custom headers, auth token, ...) from the
+    # environment; clear them all so the developer's shell cannot change this test's outcome.
+    for key in [k for k in os.environ if k.startswith("ANTHROPIC_")]:
+        monkeypatch.delenv(key)
 
     # Pick the transport module by the SDK's major version, not by what happens to be
     # importable: anthropic 0.x requires httpx.Client, 1.x moved to httpx2.
@@ -195,7 +201,7 @@ def test_judge_works_against_the_real_sdk_client() -> None:
 
     client = anthropic.Anthropic(
         api_key="test-not-a-real-key",
-        base_url="http://judge.test",  # explicit, so ANTHROPIC_BASE_URL cannot leak in
+        base_url="http://judge.test",  # reserved .test TLD: nothing real to reach
         max_retries=0,
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
