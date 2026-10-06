@@ -170,10 +170,12 @@ def test_judge_works_against_the_real_sdk_client() -> None:
 
     import anthropic
 
-    try:
-        import httpx2 as httpx  # anthropic >= 1.0
-    except ImportError:
-        import httpx  # anthropic < 1.0
+    # Pick the transport module by the SDK's major version, not by what happens to be
+    # importable: anthropic 0.x requires httpx.Client, 1.x moved to httpx2.
+    if int(anthropic.__version__.split(".")[0]) >= 1:
+        import httpx2 as httpx
+    else:
+        import httpx
 
     def handler(request: "httpx.Request") -> "httpx.Response":
         verdict = json.dumps({"reason": "same root cause", "verdict": "MATCH"})
@@ -193,6 +195,7 @@ def test_judge_works_against_the_real_sdk_client() -> None:
 
     client = anthropic.Anthropic(
         api_key="test-not-a-real-key",
+        base_url="http://judge.test",  # explicit, so ANTHROPIC_BASE_URL cannot leak in
         max_retries=0,
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
